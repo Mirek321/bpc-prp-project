@@ -1,0 +1,60 @@
+# =========================
+# ROS 2 / colcon
+# =========================
+build/
+install/
+log/
+
+# Colcon metadata
+.colcon/
+.colcon_install_layout
+
+# =========================
+# CMake
+# =========================
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+compile_commands.json
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# =========================
+# VSCode
+# =========================
+.vscode/
+
+# =========================
+# CLion / JetBrains
+# =========================
+.idea/
+cmake-build-*/
+
+# =========================
+# Linux
+# =========================
+*~
+*.swp
+*.swo
+.DS_Store
+
+# =========================
+# Logs
+# =========================
+*.log
+
+# =========================
+# ROS bags (ak nechceš commitovať)
+# =========================
+*.db3
+*.bag

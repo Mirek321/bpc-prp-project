@@ -1,6 +1,27 @@
-#include "example.hpp"
+#include <rclcpp/rclcpp.hpp>
+#include "RosExampleClass.h"
+#include "nodes/io_node.hpp"
+#include "rviz_example_class.hpp"
+int main(int argc, char* argv[]) {
+    rclcpp::init(argc, argv);
 
-int main() {
-    printMessage();
+    // Create an executor (for handling multiple nodes)
+    auto executor = std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
+
+    // Vytvorenie IoNode
+    auto io_node = std::make_shared<nodes::IoNode>();
+    auto node = std::make_shared<RvizExampleClass>("rviz_topic", 30.0);
+
+    // Pridanie do executor-a
+    executor->add_node(io_node);
+    executor->add_node(node);
+
+    RCLCPP_INFO(io_node->get_logger(), "IoNode running...");
+
+    // Shutdown ROS 2
+
+     executor->spin();
+
+    rclcpp::shutdown();
     return 0;
 }

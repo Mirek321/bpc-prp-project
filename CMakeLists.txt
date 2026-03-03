@@ -17,11 +17,16 @@ find_package(visualization_msgs REQUIRED)
 
 set(SRC
     ${CMAKE_SOURCE_DIR}/src/example.cpp
+    ${CMAKE_SOURCE_DIR}/src/nodes/io_node.cpp
 )
 
 set(AMENT_LIBS rclcpp std_msgs sensor_msgs cv_bridge image_transport)
 
-add_executable(${PROJECT_NAME} src/main.cpp ${SRC})
+add_executable(${PROJECT_NAME}
+    src/main.cpp
+    src/example.cpp
+    src/nodes/io_node.cpp
+)
 target_include_directories(${PROJECT_NAME} PUBLIC
         include
         ${OpenCV_INCLUDE_DIRS}
