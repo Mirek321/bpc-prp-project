@@ -22,7 +22,7 @@ int main(int argc, char* argv[]) {
     RCLCPP_INFO(io_node->get_logger(), "IoNode running...");
     RCLCPP_INFO(motor_node->get_logger(), "MotorNode running...");
 
-    motor_node->set_speed(150,150);
+    motor_node->set_speed(nodes::MotorNode::FORWARD, nodes::MotorNode::FORWARD);
     // Shutdown ROS 2
 
      executor->spin();

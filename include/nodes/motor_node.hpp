@@ -10,7 +10,11 @@ namespace nodes {
      public:
          MotorNode();
          ~MotorNode() override = default;
-
+        enum Direction{
+            FORWARD = 150,
+            STOP = 127,
+            BACKWARD = 100
+        };
          int get_value() const;
          const std::vector<uint32_t>& get_values() const;
          void set_speed(uint8_t l_speed, uint8_t r_speed);
