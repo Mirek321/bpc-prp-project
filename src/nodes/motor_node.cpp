@@ -23,9 +23,26 @@ namespace nodes {
         return values_;
     }
 
+    void MotorNode::updateEncoder(uint32_t encoder_value_l, uint32_t encoder_value_r) {
+        if (!first_encoder_value_set_) {
+            first_encoder_value_l_ = encoder_value_l;  
+            first_encoder_value_r_ = encoder_value_r;
+            first_encoder_value_set_ = true;
+        }
+
+        delta_l_ = encoder_value_l - first_encoder_value_l_;
+        delta_r_ = first_encoder_value_r_ - encoder_value_r;
+
+        rotations_l_ = delta_l_ / 576;
+        rotations_r_ = delta_r_ / 576;
+        
+        uint32_t sum = (rotations_l_+rotations_r_)/2;
+        RCLCPP_INFO(this->get_logger(), "Encoder R Delta: %u Rotation R: %u SUM: %u", delta_r_, rotations_r_, sum);
+
+    }
     void MotorNode::callback(const std_msgs::msg::UInt32MultiArray::SharedPtr msg) {
         values_ = msg->data;
-        RCLCPP_INFO(this->get_logger(), "Encoder1: %u, Encoder2: %u", values_[0], values_[1]);
+        updateEncoder(values_[0], values_[1]);
         
     }
     void MotorNode::set_speed(uint8_t l_speed, uint8_t r_speed) {
