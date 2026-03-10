@@ -12,4 +12,4 @@ macro(make_units_test name)
     add_test(NAME ${name} COMMAND ${name})
 endmacro()
 
-make_units_test(example)
+make_units_test(line_estimation)

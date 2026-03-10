@@ -19,6 +19,8 @@ set(SRC
     ${CMAKE_SOURCE_DIR}/src/example.cpp
     ${CMAKE_SOURCE_DIR}/src/nodes/io_node.cpp
     ${CMAKE_SOURCE_DIR}/src/nodes/motor_node.cpp
+    ${CMAKE_SOURCE_DIR}/src/nodes/line_node.cpp
+    ${CMAKE_SOURCE_DIR}/src/algorithms/line_estimator.cpp
 )
 
 set(AMENT_LIBS rclcpp std_msgs sensor_msgs cv_bridge image_transport)
@@ -28,6 +30,8 @@ add_executable(${PROJECT_NAME}
     src/example.cpp
     src/nodes/io_node.cpp
     src/nodes/motor_node.cpp
+    src/nodes/line_node.cpp
+    src/algorithms/line_estimator.cpp
 )
 target_include_directories(${PROJECT_NAME} PUBLIC
         include

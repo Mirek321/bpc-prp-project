@@ -2,6 +2,7 @@
 #include "RosExampleClass.h"
 #include "nodes/io_node.hpp"
 #include "nodes/motor_node.hpp"
+#include "nodes/line_node.hpp"
 #include "rviz_example_class.hpp"
 int main(int argc, char* argv[]) {
     rclcpp::init(argc, argv);
@@ -10,19 +11,22 @@ int main(int argc, char* argv[]) {
     auto executor = std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
 
     // Vytvorenie IoNode
-    auto io_node = std::make_shared<nodes::IoNode>();
+    // auto io_node = std::make_shared<nodes::IoNode>();
     auto motor_node = std::make_shared<nodes::MotorNode>();
-    auto node = std::make_shared<RvizExampleClass>("rviz_topic", 30.0);
+    // auto node = std::make_shared<RvizExampleClass>("rviz_topic", 30.0);
+    auto line_node = std::make_shared<nodes::LineNode>();
 
     // Pridanie do executor-a
-    executor->add_node(motor_node);
-    executor->add_node(io_node);
-    executor->add_node(node);
+    // executor->add_node(motor_node);
+    // executor->add_node(io_node);
+    // executor->add_node(node);
+    executor->add_node(line_node);
 
-    RCLCPP_INFO(io_node->get_logger(), "IoNode running...");
-    RCLCPP_INFO(motor_node->get_logger(), "MotorNode running...");
+    // RCLCPP_INFO(io_node->get_logger(), "IoNode running...");
+    // RCLCPP_INFO(motor_node->get_logger(), "MotorNode running...");
+     RCLCPP_INFO(motor_node->get_logger(), "LineNode running...");
 
-    motor_node->set_speed(nodes::MotorNode::FORWARD, nodes::MotorNode::FORWARD);
+    // motor_node->set_speed(nodes::MotorNode::FORWARD, nodes::MotorNode::FORWARD);
     // Shutdown ROS 2
 
      executor->spin();
