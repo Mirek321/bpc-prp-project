@@ -3,6 +3,7 @@
 #include "nodes/io_node.hpp"
 #include "nodes/motor_node.hpp"
 #include "nodes/line_node.hpp"
+#include "loops/line_loop.hpp"
 #include "rviz_example_class.hpp"
 int main(int argc, char* argv[]) {
     rclcpp::init(argc, argv);
@@ -15,12 +16,14 @@ int main(int argc, char* argv[]) {
     auto motor_node = std::make_shared<nodes::MotorNode>();
     // auto node = std::make_shared<RvizExampleClass>("rviz_topic", 30.0);
     auto line_node = std::make_shared<nodes::LineNode>();
+    auto loop_line_node = std::make_shared<nodes::LineLoopNode>();
 
     // Pridanie do executor-a
-    // executor->add_node(motor_node);
+    executor->add_node(motor_node);
     // executor->add_node(io_node);
     // executor->add_node(node);
     executor->add_node(line_node);
+    executor->add_node(loop_line_node);
 
     // RCLCPP_INFO(io_node->get_logger(), "IoNode running...");
     // RCLCPP_INFO(motor_node->get_logger(), "MotorNode running...");

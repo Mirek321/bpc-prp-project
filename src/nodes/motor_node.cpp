@@ -14,7 +14,7 @@ namespace nodes {
         );
         RCLCPP_INFO(this->get_logger(), "IO Node has been started.");
         timer_ = this->create_wall_timer(
-            1000ms, 
+            20ms, 
             std::bind(&MotorNode::publish_value, this)
         );
     }
@@ -37,7 +37,7 @@ namespace nodes {
         rotations_r_ = delta_r_ / 576;
         
         uint32_t sum = (rotations_l_+rotations_r_)/2;
-        RCLCPP_INFO(this->get_logger(), "Encoder R Delta: %u Rotation R: %u SUM: %u", delta_r_, rotations_r_, sum);
+        // RCLCPP_INFO(this->get_logger(), "Encoder R Delta: %u Rotation R: %u SUM: %u", delta_r_, rotations_r_, sum);
 
     }
     void MotorNode::callback(const std_msgs::msg::UInt32MultiArray::SharedPtr msg) {
