@@ -27,8 +27,8 @@ typedef struct {
 namespace nodes {
     class LineNode : public rclcpp::Node {
     public:
-        LineNode();
-         ~LineNode() override = default;
+        explicit LineNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
+        ~LineNode() override = default;
 
         // Relative pose to line [m]
         float get_continuous_line_pose() const;

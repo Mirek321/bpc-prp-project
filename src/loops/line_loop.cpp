@@ -1,29 +1,31 @@
 #include "loops/line_loop.hpp"
 
 namespace nodes {
-    LineLoopNode::LineLoopNode() : Node("line_loop_node"), pid_controller_(25.0, 0.0, 0.0)  {
+    LineLoopNode::LineLoopNode(const rclcpp::NodeOptions& options) : Node("line_loop_node",options), pid_controller_(25.0, 0.0, 0.0)  {
 
-        
-
-        // subscriber_ = this->create_subscription<std_msgs::msg::UInt8>(
-        //         "/bpc_prp_robot/line_pose_discrete", 
-        //         1, 
-        //         std::bind(&LineLoopNode::line_loop_timer_callback, this, std::placeholders::_1));
         error_subscriber_ = this->create_subscription<std_msgs::msg::Float32>(
                 "bpc_prp_robot/line_error", 
-                1, 
+                10, 
                 std::bind(&LineLoopNode::line_loop_timer_callback, this, std::placeholders::_1));
 
         motor_publisher_ = this->create_publisher<std_msgs::msg::UInt8MultiArray>(
-            "/bpc_prp_robot/set_motor_speeds", 
+            "/bpc_prp_robot/motor_commands", 
             10);
+
+        control_timer_ = this->create_wall_timer(
+            std::chrono::milliseconds(20),
+            std::bind(&LineLoopNode::control_loop_callback, this));
         
-        RCLCPP_INFO(this->get_logger(), "Line Loop Node started.");
+        RCLCPP_INFO(this->get_logger(), "Line Loop Node started @ 50Hz on own thread");
     }
 
+    void LineLoopNode::error_callback(const std_msgs::msg::Float32::SharedPtr msg) {
+        last_error_ = msg->data;
+    }
     void LineLoopNode::line_loop_timer_callback(const std_msgs::msg::Float32::SharedPtr msg) {
-        float error = msg->data;
+        float error = last_error_;
         float correction = pid_controller_.step(error,1);
+
         float left_speed_float = base_speed_ - correction;
         float right_speed_float = base_speed_ + correction;
 
@@ -33,7 +35,6 @@ namespace nodes {
         uint8_t left_speed = static_cast<uint8_t>(left_speed_float);
         uint8_t right_speed = static_cast<uint8_t>(right_speed_float);
 
-        RCLCPP_INFO(this->get_logger(), "Motor speed: [%d, %d] Correction: [%f] Error: [%f]", left_speed, right_speed, correction, error);
         publish_motor_command(left_speed,right_speed);
         // switch(pose){
         //     case 0:

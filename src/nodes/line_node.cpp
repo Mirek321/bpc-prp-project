@@ -1,20 +1,20 @@
 #include "nodes/line_node.hpp"
 
 namespace nodes {
-    LineNode::LineNode() : Node("line_node") {
+    LineNode::LineNode(const rclcpp::NodeOptions& options) : Node("line_node",options) {
         last_process_time_ = this->now();
         subscriber_ = this->create_subscription<std_msgs::msg::UInt16MultiArray>(
             "bpc_prp_robot/line_sensors", 
-            1,
+            10,
             std::bind(&LineNode::on_line_sensors_msg, this, std::placeholders::_1));
             
         pose_publisher_ = this->create_publisher<std_msgs::msg::UInt8>(
-        "bpc_prp_robot/line_pose_discrete", 
-        10);
+            "bpc_prp_robot/line_pose_discrete", 
+            10);
 
         error_publisher_ = this->create_publisher<std_msgs::msg::Float32>(
-        "bpc_prp_robot/line_error", 
-        10);
+            "bpc_prp_robot/line_error", 
+            10);
     }
 
     float LineNode::get_continuous_line_pose() const {
@@ -27,10 +27,7 @@ namespace nodes {
 
  void LineNode::on_line_sensors_msg(const std_msgs::msg::UInt16MultiArray::SharedPtr msg) {
     rclcpp::Time now = this->now();
-    // if ((now - last_process_time_).seconds() < 0.02) {
-    //     return;
-    // }
-    
+
     uint16_t left = msg->data[0];
     uint16_t right = msg->data[1];
 
@@ -40,13 +37,6 @@ namespace nodes {
     if(right < calibration_.right_min_value) calibration_.right_min_value = right;
     if(right > calibration_.right_max_value) calibration_.right_max_value = right;
 
-    RCLCPP_INFO(
-        this->get_logger(), 
-        "RAW: L=%u R=%u | MIN: L=%u R=%u | MAX: L=%u R=%u",
-        left, right,
-        calibration_.left_min_value, calibration_.right_min_value,
-        calibration_.left_max_value, calibration_.right_max_value
-    );
     // Continuous estimation
     current_continuous = estimate_continuous_line_pose(left, right);
     
@@ -58,15 +48,19 @@ namespace nodes {
     auto pose_msg = std_msgs::msg::Float32();
     pose_msg.data = current_continuous;
     error_publisher_->publish(pose_msg);
-    
     last_process_time_ = now;
+
+    static int counter = 0;
+    if (++counter % 50 == 0) {
+        RCLCPP_INFO(this->get_logger(), 
+            "Sensors: L=%u R=%u | Error=%.2f", left, right, current_continuous);
+    }
 }
 
     float LineNode::estimate_continuous_line_pose(float left_value, float right_value) {
         float calibrated_left = (left_value - (float)MIN_L_VALUE) / (MAX_L_VALUE - (float)MIN_L_VALUE);
         float calibrated_right = (right_value - (float)MIN_R_VALUE) / (MAX_R_VALUE - (float)MIN_R_VALUE); 
 
-        RCLCPP_INFO(this->get_logger(), "Calibrated line sensor data: [%f, %f]", calibrated_left, calibrated_right);
         return calibrated_left - calibrated_right;
     }
 

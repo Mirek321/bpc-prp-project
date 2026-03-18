@@ -8,8 +8,8 @@
 namespace nodes {
      class MotorNode : public rclcpp::Node {
      public:
-         MotorNode();
-         ~MotorNode() override = default;
+        explicit MotorNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
+
         enum Direction{
             FORWARD = 150,
             STOP = 127,
@@ -31,11 +31,13 @@ namespace nodes {
         uint32_t rotations_r_ = 0;
         uint32_t last_rotations_ = 0;
         rclcpp::Subscription<std_msgs::msg::UInt32MultiArray>::SharedPtr subscriber_;
+        rclcpp::Subscription<std_msgs::msg::UInt8MultiArray>::SharedPtr motor_cmd_subscriber_;
         rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr publisher_;
         uint8_t motor_0_ = 127;
         uint8_t motor_1_ = 127;
         rclcpp::TimerBase::SharedPtr timer_;
         void callback(const std_msgs::msg::UInt32MultiArray::SharedPtr msg);
+        void motor_command_callback(const std_msgs::msg::UInt8MultiArray::SharedPtr msg); 
         void updateEncoder(uint32_t encoder_value_l, uint32_t encoder_value_r);
         void publish_value();
      };

@@ -7,34 +7,51 @@
 #include "rviz_example_class.hpp"
 int main(int argc, char* argv[]) {
     rclcpp::init(argc, argv);
+
     rclcpp::NodeOptions options;
     options.use_intra_process_comms(true);
-    // Create an executor (for handling multiple nodes)
-    auto executor = std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
 
-    // Vytvorenie IoNode
-    // auto io_node = std::make_shared<nodes::IoNode>();
-    auto motor_node = std::make_shared<nodes::MotorNode>();
-    // auto node = std::make_shared<RvizExampleClass>("rviz_topic", 30.0);
-    auto line_node = std::make_shared<nodes::LineNode>();
-    auto loop_line_node = std::make_shared<nodes::LineLoopNode>();
+    auto motor_node = std::make_shared<nodes::MotorNode>(options);
+    auto line_node = std::make_shared<nodes::LineNode>(options);
+    auto loop_line_node = std::make_shared<nodes::LineLoopNode>(options);
 
-    // Pridanie do executor-a
-    executor->add_node(motor_node);
-    // executor->add_node(io_node);
-    // executor->add_node(node);
-    executor->add_node(line_node);
-    executor->add_node(loop_line_node);
+    auto motor_executor = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
+    auto line_executor = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
+    auto loop_executor = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
 
-    // RCLCPP_INFO(io_node->get_logger(), "IoNode running...");
-    // RCLCPP_INFO(motor_node->get_logger(), "MotorNode running...");
-     RCLCPP_INFO(motor_node->get_logger(), "LineNode running...");
 
-    // motor_node->set_speed(nodes::MotorNode::FORWARD, nodes::MotorNode::FORWARD);
-    // Shutdown ROS 2
+    motor_executor->add_node(motor_node);
+    line_executor->add_node(line_node);
+    loop_executor->add_node(loop_line_node);
 
-     executor->spin();
+    RCLCPP_INFO(loop_node->get_logger(), "Starting 3 nodes on 3 separate threads...");
 
+    threads.emplace_back([motor_executor](){
+        motor_executor->spin();
+    });
+
+    threads.emplace_back([line_executor](){
+        line_executor->spin();
+    });
+    threads.emplace_back([loop_executor](){
+        line_executor->spin();
+    });
+
+    while (rclcpp::ok()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    RCLCPP_INFO(loop_node->get_logger(),"Shutting down... ");
     rclcpp::shutdown();
+
+    motor_executor->cancel();
+    line_executor->cancel();
+    loop_executor->cancel();
+
+    for(auto& t: threads){
+        t.join();
+    }
+
+    RCLCPP_INFO(loop_node->get_logger(), "All threads joined. Exit.");
     return 0;
 }
