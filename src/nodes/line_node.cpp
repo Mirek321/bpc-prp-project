@@ -7,8 +7,13 @@ namespace nodes {
             "bpc_prp_robot/line_sensors", 
             1,
             std::bind(&LineNode::on_line_sensors_msg, this, std::placeholders::_1));
+            
         pose_publisher_ = this->create_publisher<std_msgs::msg::UInt8>(
         "bpc_prp_robot/line_pose_discrete", 
+        10);
+
+        error_publisher_ = this->create_publisher<std_msgs::msg::Float32>(
+        "bpc_prp_robot/line_error", 
         10);
     }
 
@@ -22,30 +27,37 @@ namespace nodes {
 
  void LineNode::on_line_sensors_msg(const std_msgs::msg::UInt16MultiArray::SharedPtr msg) {
     rclcpp::Time now = this->now();
-    if ((now - last_process_time_).seconds() < 0.02) {
-        return;
-    }
+    // if ((now - last_process_time_).seconds() < 0.02) {
+    //     return;
+    // }
     
     uint16_t left = msg->data[0];
     uint16_t right = msg->data[1];
-    
+
     // Calibration
     if(left < calibration_.left_min_value) calibration_.left_min_value = left;
     if(left > calibration_.left_max_value) calibration_.left_max_value = left;
     if(right < calibration_.right_min_value) calibration_.right_min_value = right;
     if(right > calibration_.right_max_value) calibration_.right_max_value = right;
 
+    RCLCPP_INFO(
+        this->get_logger(), 
+        "RAW: L=%u R=%u | MIN: L=%u R=%u | MAX: L=%u R=%u",
+        left, right,
+        calibration_.left_min_value, calibration_.right_min_value,
+        calibration_.left_max_value, calibration_.right_max_value
+    );
     // Continuous estimation
     current_continuous = estimate_continuous_line_pose(left, right);
     
-    float l_norm = (left - (float)MIN_L_VALUE) / (MAX_L_VALUE - (float)MIN_L_VALUE);
-    float r_norm = (right - (float)MIN_R_VALUE) / (MAX_R_VALUE - (float)MIN_R_VALUE);
+    // float l_norm = (left - (float)MIN_L_VALUE) / (MAX_L_VALUE - (float)MIN_L_VALUE);
+    // float r_norm = (right - (float)MIN_R_VALUE) / (MAX_R_VALUE - (float)MIN_R_VALUE);
     
-    DiscreteLinePose current_discrete = estimate_discrete_line_pose(l_norm, r_norm);
+    // DiscreteLinePose current_discrete = estimate_discrete_line_pose(l_norm, r_norm);
     
-    auto pose_msg = std_msgs::msg::UInt8();
-    pose_msg.data = static_cast<uint8_t>(current_discrete);
-    pose_publisher_->publish(pose_msg);
+    auto pose_msg = std_msgs::msg::Float32();
+    pose_msg.data = current_continuous;
+    error_publisher_->publish(pose_msg);
     
     last_process_time_ = now;
 }

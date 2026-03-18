@@ -7,7 +7,8 @@
 #include "rviz_example_class.hpp"
 int main(int argc, char* argv[]) {
     rclcpp::init(argc, argv);
-
+    rclcpp::NodeOptions options;
+    options.use_intra_process_comms(true);
     // Create an executor (for handling multiple nodes)
     auto executor = std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
 

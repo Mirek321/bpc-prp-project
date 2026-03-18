@@ -13,10 +13,10 @@ namespace nodes {
             10
         );
         RCLCPP_INFO(this->get_logger(), "IO Node has been started.");
-        timer_ = this->create_wall_timer(
-            20ms, 
-            std::bind(&MotorNode::publish_value, this)
-        );
+        // timer_ = this->create_wall_timer(
+        //     1ms, 
+        //     std::bind(&MotorNode::publish_value, this)
+        // );
     }
 
     const std::vector<uint32_t>& MotorNode::get_values() const {
