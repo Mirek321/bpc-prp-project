@@ -22,7 +22,7 @@ namespace nodes {
         int log_counter_ = 0;
 
         void control_loop_callback(); 
-        void line_loop_timer_callback(const std_msgs::msg::Float32::SharedPtr msg);
+      //   void line_loop_timer_callback(const std_msgs::msg::Float32::SharedPtr msg);
         void error_callback(const std_msgs::msg::Float32::SharedPtr msg); 
         void publish_motor_command(uint8_t left_speed, uint8_t right_speed);
 

@@ -6,9 +6,9 @@
 #include <std_msgs/msg/float32.hpp>
 
 #define MIN_L_VALUE 0
-#define MAX_L_VALUE 893
+#define MAX_L_VALUE 1024
 #define MIN_R_VALUE 0
-#define MAX_R_VALUE 1023
+#define MAX_R_VALUE 1024
 
 enum class DiscreteLinePose {
     LineOnLeft = 0,

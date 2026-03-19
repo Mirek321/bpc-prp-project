@@ -10,7 +10,7 @@ namespace nodes {
         );
 
          motor_cmd_subscriber_ = this->create_subscription<std_msgs::msg::UInt8MultiArray>(
-            "/line_loop/motor_commands",  
+            "/bpc_prp_robot/motor_commands",  
             10,
             std::bind(&MotorNode::motor_command_callback, this, std::placeholders::_1)
         );

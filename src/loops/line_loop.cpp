@@ -1,12 +1,12 @@
 #include "loops/line_loop.hpp"
 
 namespace nodes {
-    LineLoopNode::LineLoopNode(const rclcpp::NodeOptions& options) : Node("line_loop_node",options), pid_controller_(25.0, 0.0, 0.0)  {
+    LineLoopNode::LineLoopNode(const rclcpp::NodeOptions& options) : Node("line_loop_node",options), pid_controller_(6.25, 0.0, 0.0)  {
 
         error_subscriber_ = this->create_subscription<std_msgs::msg::Float32>(
                 "bpc_prp_robot/line_error", 
                 10, 
-                std::bind(&LineLoopNode::line_loop_timer_callback, this, std::placeholders::_1));
+                std::bind(&LineLoopNode::error_callback, this, std::placeholders::_1));
 
         motor_publisher_ = this->create_publisher<std_msgs::msg::UInt8MultiArray>(
             "/bpc_prp_robot/motor_commands", 
@@ -22,7 +22,7 @@ namespace nodes {
     void LineLoopNode::error_callback(const std_msgs::msg::Float32::SharedPtr msg) {
         last_error_ = msg->data;
     }
-    void LineLoopNode::line_loop_timer_callback(const std_msgs::msg::Float32::SharedPtr msg) {
+    void LineLoopNode::control_loop_callback() {
         float error = last_error_;
         float correction = pid_controller_.step(error,1);
 
@@ -34,7 +34,10 @@ namespace nodes {
 
         uint8_t left_speed = static_cast<uint8_t>(left_speed_float);
         uint8_t right_speed = static_cast<uint8_t>(right_speed_float);
-
+        if (++log_counter_ % 20 == 0) {
+            RCLCPP_INFO(this->get_logger(), "Speed: L=%d R=%d | Error=%.2f", 
+            left_speed, right_speed, error);
+        }
         publish_motor_command(left_speed,right_speed);
         // switch(pose){
         //     case 0:

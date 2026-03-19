@@ -5,6 +5,8 @@
 #include "nodes/line_node.hpp"
 #include "loops/line_loop.hpp"
 #include "rviz_example_class.hpp"
+#include <thread>     
+#include <vector>  
 int main(int argc, char* argv[]) {
     rclcpp::init(argc, argv);
 
@@ -24,8 +26,10 @@ int main(int argc, char* argv[]) {
     line_executor->add_node(line_node);
     loop_executor->add_node(loop_line_node);
 
-    RCLCPP_INFO(loop_node->get_logger(), "Starting 3 nodes on 3 separate threads...");
+    RCLCPP_INFO(loop_line_node->get_logger(), "Starting 3 nodes on 3 separate threads...");
 
+    std::vector<std::thread> threads;
+    
     threads.emplace_back([motor_executor](){
         motor_executor->spin();
     });
@@ -34,14 +38,14 @@ int main(int argc, char* argv[]) {
         line_executor->spin();
     });
     threads.emplace_back([loop_executor](){
-        line_executor->spin();
+        loop_executor->spin();
     });
 
     while (rclcpp::ok()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    RCLCPP_INFO(loop_node->get_logger(),"Shutting down... ");
+    RCLCPP_INFO(loop_line_node->get_logger(),"Shutting down... ");
     rclcpp::shutdown();
 
     motor_executor->cancel();
@@ -52,6 +56,6 @@ int main(int argc, char* argv[]) {
         t.join();
     }
 
-    RCLCPP_INFO(loop_node->get_logger(), "All threads joined. Exit.");
+    RCLCPP_INFO(loop_line_node->get_logger(), "All threads joined. Exit.");
     return 0;
 }
