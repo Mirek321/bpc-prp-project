@@ -1,7 +1,7 @@
 #include "loops/line_loop.hpp"
 
 namespace nodes {
-    LineLoopNode::LineLoopNode(const rclcpp::NodeOptions& options) : Node("line_loop_node",options), pid_controller_(6.25, 0.0, 0.0)  {
+    LineLoopNode::LineLoopNode(const rclcpp::NodeOptions& options) : Node("line_loop_node",options), pid_controller_(9.0, 0.0, 0.2)  {
 
         error_subscriber_ = this->create_subscription<std_msgs::msg::Float32>(
                 "bpc_prp_robot/line_error", 
@@ -11,6 +11,8 @@ namespace nodes {
         motor_publisher_ = this->create_publisher<std_msgs::msg::UInt8MultiArray>(
             "/bpc_prp_robot/motor_commands", 
             10);
+
+        last_callback_time_ = this->now();
 
         control_timer_ = this->create_wall_timer(
             std::chrono::milliseconds(20),
@@ -23,8 +25,14 @@ namespace nodes {
         last_error_ = msg->data;
     }
     void LineLoopNode::control_loop_callback() {
+        rclcpp::Time now = this->now();
+        double dt = (now - last_callback_time_).seconds();
+        if (dt <= 0.0) {
+            dt = 0.02;
+        }
+        last_callback_time_ = now;
         float error = last_error_;
-        float correction = pid_controller_.step(error,1);
+        float correction = pid_controller_.step(error,dt);
 
         float left_speed_float = base_speed_ - correction;
         float right_speed_float = base_speed_ + correction;

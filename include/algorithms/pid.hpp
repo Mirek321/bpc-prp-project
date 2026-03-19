@@ -11,7 +11,9 @@ namespace algorithms {
             : kp_(kp), ki_(ki), kd_(kd), prev_error_(0), integral_(0) {}
 
         float step(float error, float dt) {
-            float output = kp_ * error;
+            integral_ += error * dt;
+            float derivative = (error - prev_error_) / dt;
+            float output = kp_ * error + ki_ * integral_ + kd_ * derivative;
             prev_error_ = error;
             return output;
         }

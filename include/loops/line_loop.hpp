@@ -17,7 +17,8 @@ namespace nodes {
         rclcpp::TimerBase::SharedPtr control_timer_;
         
         algorithms::Pid pid_controller_; 
-        float base_speed_ = 140.0f;
+        rclcpp::Time last_callback_time_; 
+        float base_speed_ = 135.0f;
         float last_error_ = 0.0f;
         int log_counter_ = 0;
 
