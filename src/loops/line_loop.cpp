@@ -15,7 +15,7 @@ namespace nodes {
         last_callback_time_ = this->now();
 
         control_timer_ = this->create_wall_timer(
-            std::chrono::milliseconds(20),
+            std::chrono::milliseconds(1),
             std::bind(&LineLoopNode::control_loop_callback, this));
         
         RCLCPP_INFO(this->get_logger(), "Line Loop Node started @ 50Hz on own thread");
