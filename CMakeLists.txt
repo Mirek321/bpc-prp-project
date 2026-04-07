@@ -21,6 +21,8 @@ set(SRC
     ${CMAKE_SOURCE_DIR}/src/nodes/motor_node.cpp
     ${CMAKE_SOURCE_DIR}/src/nodes/line_node.cpp
     ${CMAKE_SOURCE_DIR}/src/loops/line_loop.cpp
+    ${CMAKE_SOURCE_DIR}/src/nodes/lidar_node.cpp
+    ${CMAKE_SOURCE_DIR}/src/loops/corridor_loop.cpp
 )
 
 set(AMENT_LIBS rclcpp std_msgs sensor_msgs cv_bridge image_transport)
@@ -31,7 +33,9 @@ add_executable(${PROJECT_NAME}
     src/nodes/io_node.cpp
     src/nodes/motor_node.cpp
     src/nodes/line_node.cpp
+    src/nodes/lidar_node.cpp
     src/loops/line_loop.cpp
+    src/loops/corridor_loop.cpp
 )
 target_include_directories(${PROJECT_NAME} PUBLIC
         include
