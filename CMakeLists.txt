@@ -11,7 +11,7 @@ find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(image_transport REQUIRED)
-find_package(OpenCV REQUIRED)
+find_package(OpenCV REQUIRED COMPONENTS aruco)
 find_package(SDL2 REQUIRED)
 find_package(visualization_msgs REQUIRED)
 
@@ -21,6 +21,7 @@ set(SRC
     ${CMAKE_SOURCE_DIR}/src/nodes/motor_node.cpp
     ${CMAKE_SOURCE_DIR}/src/nodes/line_node.cpp
     ${CMAKE_SOURCE_DIR}/src/loops/line_loop.cpp
+    ${CMAKE_SOURCE_DIR}/src/nodes/camera_node.cpp
 )
 
 set(AMENT_LIBS rclcpp std_msgs sensor_msgs cv_bridge image_transport)
@@ -32,6 +33,7 @@ add_executable(${PROJECT_NAME}
     src/nodes/motor_node.cpp
     src/nodes/line_node.cpp
     src/loops/line_loop.cpp
+    src/nodes/camera_node.cpp
 )
 target_include_directories(${PROJECT_NAME} PUBLIC
         include
@@ -39,7 +41,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
         ${SDL2_INCLUDE_DIRS}
         /opt/ros/humble/include
 )
-target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS} ${SDL2_LIBS})
+target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBRARIES} ${SDL2_LIBS})
 ament_target_dependencies(${PROJECT_NAME} rclcpp std_msgs sensor_msgs cv_bridge image_transport visualization_msgs)
 
 install(TARGETS ${PROJECT_NAME} DESTINATION lib/${PROJECT_NAME})
