@@ -24,6 +24,7 @@ set(SRC
     ${CMAKE_SOURCE_DIR}/src/loops/corridor_loop.cpp
     ${CMAKE_SOURCE_DIR}/src/nodes/lidar_node.cpp
     ${CMAKE_SOURCE_DIR}/src/nodes/camera_node.cpp
+    ${CMAKE_SOURCE_DIR}/src/nodes/imu_node.cpp
 )
 
 set(AMENT_LIBS rclcpp std_msgs sensor_msgs cv_bridge image_transport)
@@ -39,6 +40,7 @@ add_executable(${PROJECT_NAME}
     src/loops/corridor_loop.cpp
     src/nodes/lidar_node.cpp
     src/nodes/camera_node.cpp
+    src/nodes/imu_node.cpp
 )
 target_include_directories(${PROJECT_NAME} PUBLIC
         include
