@@ -2,6 +2,7 @@
 #include <vector>
 #include <numeric>
 #include <limits>
+#include <algorithm> 
 
 namespace algorithms {
 
@@ -54,12 +55,20 @@ namespace algorithms {
                 if (v.empty()) return default_val;
                 return std::accumulate(v.begin(), v.end(), 0.0f) / static_cast<float>(v.size());
             };
+            auto safe_median = [](const std::vector<float>& v, float default_val) -> float {
+                if (v.empty()) return default_val;
+                std::vector<float> temp = v;
+                size_t mid = temp.size() / 2;
+                std::nth_element(temp.begin(), temp.begin() + mid, temp.end());
+                
+                return temp[mid];
+            };
 
             return LidarFilterResults{
-                .front = safe_average(front, 999.0f),
-                .back  = safe_average(back, 999.0f),
-                .left  = safe_average(left, 999.0f),
-                .right = safe_average(right, 999.0f),
+                .front = safe_median(front, 999.0f),
+                .back  = safe_median(back, 999.0f),
+                .left  = safe_median(left, 999.0f),
+                .right = safe_median(right, 999.0f),
             };
         }
     };

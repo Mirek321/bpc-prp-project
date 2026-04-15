@@ -2,6 +2,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include "sensor_msgs/msg/laser_scan.hpp"
 #include "std_msgs/msg/float32.hpp"
+#include "std_msgs/msg/float32_multi_array.hpp"
 #include "algorithms/lidar_filter.hpp"
 
 namespace nodes {
@@ -18,7 +19,10 @@ private:
     
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr subscriber_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr error_publisher_;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr front_distance_publisher_;
+    rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr side_distances_publisher_;
     
     void callback(const sensor_msgs::msg::LaserScan::SharedPtr msg);
+    algorithms::LidarFilter filter_;
 };
 }  // namespace nodes
