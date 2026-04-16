@@ -15,6 +15,9 @@ namespace nodes {
         error_publisher_ = this->create_publisher<std_msgs::msg::Float32>(
             "bpc_prp_robot/line_error", 
             10);
+        detected_publisher_ = this->create_publisher<std_msgs::msg::Bool>(
+        "bpc_prp_robot/line_detected", 
+        10);
     }
 
     float LineNode::get_continuous_line_pose() const {
@@ -40,16 +43,19 @@ namespace nodes {
     // Continuous estimation
     current_continuous = estimate_continuous_line_pose(left, right);
     
-    // float l_norm = (left - (float)MIN_L_VALUE) / (MAX_L_VALUE - (float)MIN_L_VALUE);
-    // float r_norm = (right - (float)MIN_R_VALUE) / (MAX_R_VALUE - (float)MIN_R_VALUE);
+    float l_norm = (left - (float)MIN_L_VALUE) / (MAX_L_VALUE - (float)MIN_L_VALUE);
+    float r_norm = (right - (float)MIN_R_VALUE) / (MAX_R_VALUE - (float)MIN_R_VALUE);
     
     // DiscreteLinePose current_discrete = estimate_discrete_line_pose(l_norm, r_norm);
-    
+    bool line_is_visible = (l_norm > threshold_l) || (r_norm > threshold_r);
     auto pose_msg = std_msgs::msg::Float32();
     pose_msg.data = current_continuous;
     error_publisher_->publish(pose_msg);
     last_process_time_ = now;
 
+    auto detected_msg = std_msgs::msg::Bool();
+    detected_msg.data = line_is_visible;
+    detected_publisher_->publish(detected_msg);
     static int counter = 0;
     if (++counter % 50 == 0) {
         RCLCPP_INFO(this->get_logger(), 
@@ -63,7 +69,6 @@ namespace nodes {
 
         return calibrated_left - calibrated_right;
     }
-
     DiscreteLinePose LineNode::estimate_discrete_line_pose(float l_norm, float r_norm) {
 
         bool sensor_l = l_norm > threshold_l;  

@@ -4,6 +4,7 @@
 #include <std_msgs/msg/u_int16_multi_array.hpp>
 #include <std_msgs/msg/u_int8.hpp>
 #include <std_msgs/msg/float32.hpp>
+#include <std_msgs/msg/bool.hpp>
 
 #define MIN_L_VALUE 0
 #define MAX_L_VALUE 1024
@@ -41,6 +42,7 @@ namespace nodes {
         rclcpp::Subscription<std_msgs::msg::UInt16MultiArray>::SharedPtr subscriber_;
         rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr pose_publisher_; 
         rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr error_publisher_; 
+        rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr detected_publisher_;
         rclcpp::Time last_process_time_;
         float threshold_l = 0.7;
         float threshold_r = 0.4;
