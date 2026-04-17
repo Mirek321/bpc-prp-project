@@ -47,12 +47,12 @@ private:
     const float base_speed_ = 135.0f;
     const float max_correction_ = 80.0f;
     const float STOP_DISTANCE = 0.15f;
-    const float YAW_PRECISION = 0.1f;
+    const float YAW_PRECISION = 0.05f;
     const float YAW_DEADBAND = 0.03f;
     const float ERROR_DEADBAND = 0.02f;
     const float ERROR_ALPHA = 0.2f;
     const float YAW_P_GAIN = 2.5f;
-    const float K_TURN_P = 10.0f;
+    const float K_TURN_P = 20.0f;
     const float TURN_MAX_PWM = 50.0f;
     const float OPEN_DIST = 0.40f;       // >40cm = otvorený priestor
     const float MIN_LIDAR_DIST = 0.16f;  // Slepá zóna LiDARu
