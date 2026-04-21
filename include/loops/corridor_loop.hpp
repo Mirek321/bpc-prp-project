@@ -44,14 +44,14 @@ private:
     rclcpp::Time hole_start_time_;
 
     // Control Constants (BPC-PRP aligned)
-    const float base_speed_ = 135.0f;
+    const float base_speed_ = 140.0f;
     const float max_correction_ = 80.0f;
     const float STOP_DISTANCE = 0.15f;
     const float YAW_PRECISION = 0.05f;
     const float YAW_DEADBAND = 0.03f;
     const float ERROR_DEADBAND = 0.02f;
     const float ERROR_ALPHA = 0.2f;
-    const float YAW_P_GAIN = 2.5f;
+    const float YAW_P_GAIN = 3.0f;
     const float K_TURN_P = 20.0f;
     const float TURN_MAX_PWM = 50.0f;
     const float OPEN_DIST = 0.40f;       // >40cm = otvorený priestor
@@ -59,6 +59,8 @@ private:
     const float DESIRED_HALF_WIDTH = 0.20f;
     const float EXIT_WALL_THRESHOLD = 1.8f;
     bool is_line_detected_ = false; // Premenná na uloženie stavu (true/false)
+    bool exit_line_seen_ = false;
+    rclcpp::Time exit_line_detect_time_;
 
     // --- Callbacks ---
 

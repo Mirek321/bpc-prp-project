@@ -6,7 +6,7 @@ namespace nodes {
 
 CorridorLoopNode::CorridorLoopNode(const rclcpp::NodeOptions& options)
     : Node("corridor_loop_node", options),
-      pid_controller_(13.0f, 0.0f, 0.0f) // P-only
+      pid_controller_(15.0f, 1.0f, 0.0f) // P-only
 {
     error_sub_ = this->create_subscription<std_msgs::msg::Float32>(
         "bpc_prp_robot/error_lidar", 10,
@@ -131,7 +131,7 @@ void CorridorLoopNode::control_loop_callback() {
             // if (std::abs(filtered_error_) < ERROR_DEADBAND) filtered_error_ = 0.0f;
 
             float yaw_dev = normalize_angle(target_yaw_ - current_yaw_);
-            if (std::abs(yaw_dev) < YAW_DEADBAND) yaw_dev = 0.0f;
+            // if (std::abs(yaw_dev) < YAW_DEADBAND) yaw_dev = 0.0f;
 
             float lidar_cor = pid_controller_.step(filtered_error_, static_cast<float>(dt));
             float imu_cor   = yaw_dev * YAW_P_GAIN;
@@ -146,7 +146,7 @@ void CorridorLoopNode::control_loop_callback() {
             bool hole = front_close && (L_open || R_open);
             
             if (hole) {
-                if ((now - hole_start_time_).seconds() > 0.5) { // Skrátená hysteréza pre rýchlejšiu odozvu
+                if ((now - hole_start_time_).seconds() > 0.3) { // Skrátená hysteréza pre rýchlejšiu odozvu
                     current_state_ = State::DRIVE_TO_CENTER;
                     detection_time_ = now;
                     last_turn_direction_ = L_open ? -1.0f : 1.0f;
@@ -210,8 +210,11 @@ void CorridorLoopNode::control_loop_callback() {
         }
         break;
 
-        case State::EXIT_CORNER:
+             case State::EXIT_CORNER:
         {
+            // Reset flagu pri prvom vstupe (alebo ho resetuj v TURNING)
+            // Lepšie: Resetuj ho v DRIVE_TO_CENTER alebo na začiatku EXIT ak je time 0
+            
             float yaw_err = normalize_angle(target_yaw_ - current_yaw_);
             float imu_cor = yaw_err * 2.5f; 
             float total_cor = std::clamp(imu_cor, -40.0f, 40.0f);
@@ -221,43 +224,26 @@ void CorridorLoopNode::control_loop_callback() {
                 static_cast<uint8_t>(std::clamp(base_speed_ + total_cor, 0.0f, 255.0f))
             );
 
-            // Logika pre čiaru:
-            // 1. Ak vidíme čiaru, začneme merať čas stabilizácie
-            static bool exit_line_seen = false;
-            
-            if (is_line_detected_) {
-                if (!exit_line_seen) {
-                    detection_time_ = now; // Start timer when line is first seen
-                    exit_line_seen = true;
-                    RCLCPP_INFO(this->get_logger(), "🏁 Line detected in EXIT!");
-                }
-                
-                // Ak sme videli čiaru a uplynulo 0.5s, prepni sa
-                if ((now - detection_time_).seconds() > 0.3) {
-                    RCLCPP_INFO(this->get_logger(), "🟢 Stable after line. Resuming Following.");
-                    pid_controller_.reset();
-                    target_yaw_ = current_yaw_; 
-                    current_state_ = State::CORRIDOR_FOLLOWING;
-                    exit_line_seen = false; // Reset for next time
-                }
-            } else {
-                // Ak čiara zmizne (napr. prejazd), ale ešte sme sa neprepkli,
-                // môžeme pokračovať v čakaní alebo resetovať flag ak bola len falošná detekcia.
-                // Pre jednoduchosť tu necháme flag aktívny, ak už raz bola čiara videná.
+            if (!exit_line_seen_ && is_line_detected_) {
+                exit_line_seen_ = true;
+                exit_line_detect_time_ = now;
+                RCLCPP_INFO(this->get_logger(), "🏁 Line detected in EXIT!");
             }
 
-            // Bezpečnostný timeout: Ak by čiara nebola nikdy, po 4s od vstupu do EXIT_CORNER pokračuj
-            // Poznámka: detection_time_ sa v TURNING resetoval, takže meriame čas od skončenia otočky
-            // if (!exit_line_seen && (now - detection_time_).seconds() > 4.0) {
-            //      RCLCPP_WARN(this->get_logger(), "⚠️ Exit timeout (No line). Forcing resume.");
-            //      pid_controller_.reset();
-            //      target_yaw_ = current_yaw_;
-            //      current_state_ = State::CORRIDOR_FOLLOWING;
-            // }
+            if (exit_line_seen_ && (now - exit_line_detect_time_).seconds() > 0.3) {
+                RCLCPP_INFO(this->get_logger(), "🟢 Stable after line. Resuming Following.");
+                pid_controller_.reset();
+                target_yaw_ = current_yaw_; 
+                current_state_ = State::CORRIDOR_FOLLOWING;
+                exit_line_seen_ = false; // Reset pre budúcu križovatku
+            }
 
-            if (should_log) {
-                RCLCPP_INFO(this->get_logger(), "[EXIT] YawErr: %.3f | Line: %s | Time: %.1f", 
-                            yaw_err, is_line_detected_ ? "YES" : "NO", (now - detection_time_).seconds());
+            // Timeout ak čiara nie je
+            if (!exit_line_seen_ && (now - detection_time_).seconds() > 3.0) {
+                 RCLCPP_WARN(this->get_logger(), "⚠️ Exit timeout. Resuming.");
+                 pid_controller_.reset();
+                 target_yaw_ = current_yaw_; 
+                 current_state_ = State::CORRIDOR_FOLLOWING;
             }
         }
         break;
