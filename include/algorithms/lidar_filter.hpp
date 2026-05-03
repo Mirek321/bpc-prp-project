@@ -65,10 +65,10 @@ namespace algorithms {
             };
 
             return LidarFilterResults{
-                .front = safe_median(front, 999.0f),
-                .back  = safe_median(back, 999.0f),
-                .left  = safe_median(left, 999.0f),
-                .right = safe_median(right, 999.0f),
+                .front = safe_median(front, 15.0f),
+                .back  = safe_median(back, 15.0f),
+                .left  = safe_median(left, 15.0f),
+                .right = safe_median(right, 15.0f),
             };
         }
     };

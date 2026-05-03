@@ -6,7 +6,7 @@ namespace nodes {
 
 CorridorLoopNode::CorridorLoopNode(const rclcpp::NodeOptions& options)
     : Node("corridor_loop_node", options),
-      pid_controller_(15.0f, 1.0f, 0.0f) // P-only
+      pid_controller_(15.0f, 1.0f, 2.0f) // P-only
 {
     error_sub_ = this->create_subscription<std_msgs::msg::Float32>(
         "bpc_prp_robot/error_lidar", 10,
@@ -117,7 +117,7 @@ void CorridorLoopNode::control_loop_callback() {
 
             float raw_err = 0.0f;
             if (L_valid && R_valid) {
-                raw_err = (current_right_dist_ - current_left_dist_) / 2.0f;
+                raw_err = (current_right_dist_ - current_left_dist_) ;
             }
             else if (L_valid && !R_valid) {
                 raw_err = DESIRED_HALF_WIDTH - current_left_dist_; 
@@ -132,7 +132,10 @@ void CorridorLoopNode::control_loop_callback() {
 
             float yaw_dev = normalize_angle(target_yaw_ - current_yaw_);
             // if (std::abs(yaw_dev) < YAW_DEADBAND) yaw_dev = 0.0f;
-
+//             if (std::abs(yaw_dev) > 0.2f) {
+//     target_yaw_ = current_yaw_;  // Reset ak je drift veľký
+//     yaw_dev = 0.0f;
+// }
             float lidar_cor = pid_controller_.step(filtered_error_, static_cast<float>(dt));
             float imu_cor   = yaw_dev * YAW_P_GAIN;
             float total_cor = std::clamp(lidar_cor + imu_cor, -max_correction_, max_correction_);
@@ -230,7 +233,7 @@ void CorridorLoopNode::control_loop_callback() {
                 RCLCPP_INFO(this->get_logger(), "🏁 Line detected in EXIT!");
             }
 
-            if (exit_line_seen_ && (now - exit_line_detect_time_).seconds() > 0.3) {
+            if (exit_line_seen_ && (now - exit_line_detect_time_).seconds() > 1.0) {
                 RCLCPP_INFO(this->get_logger(), "🟢 Stable after line. Resuming Following.");
                 pid_controller_.reset();
                 target_yaw_ = current_yaw_; 
