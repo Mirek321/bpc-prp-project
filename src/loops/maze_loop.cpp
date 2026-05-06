@@ -1,37 +1,37 @@
-#include "loops/corridor_loop.hpp"
+#include "loops/maze_loop.hpp"
 #include <algorithm>
 #include <cmath>
 
 namespace nodes {
 
-CorridorLoopNode::CorridorLoopNode(const rclcpp::NodeOptions& options)
-    : Node("corridor_loop_node", options),
-      pid_controller_(15.0f, 1.0f, 2.0f) // P-only
+MazeLoopNode::MazeLoopNode(const rclcpp::NodeOptions& options)
+    : Node("Maze_loop_node", options),
+      pid_controller_(15.0f, 1.0f, 1.5f) // P-only
 {
     error_sub_ = this->create_subscription<std_msgs::msg::Float32>(
         "bpc_prp_robot/error_lidar", 10,
-        std::bind(&CorridorLoopNode::error_callback, this, std::placeholders::_1));
+        std::bind(&MazeLoopNode::error_callback, this, std::placeholders::_1));
     
     front_dist_sub_ = this->create_subscription<std_msgs::msg::Float32>(
         "bpc_prp_robot/front_distance", 10,
-        std::bind(&CorridorLoopNode::front_dist_callback, this, std::placeholders::_1));
+        std::bind(&MazeLoopNode::front_dist_callback, this, std::placeholders::_1));
 
     side_dist_sub_ = this->create_subscription<std_msgs::msg::Float32MultiArray>(
         "bpc_prp_robot/side_distances", 10,
-        std::bind(&CorridorLoopNode::side_dist_callback, this, std::placeholders::_1));
+        std::bind(&MazeLoopNode::side_dist_callback, this, std::placeholders::_1));
     
     yaw_sub_ = this->create_subscription<std_msgs::msg::Float32>(
         "bpc_prp_robot/yaw", 10,
-        std::bind(&CorridorLoopNode::yaw_callback, this, std::placeholders::_1));
+        std::bind(&MazeLoopNode::yaw_callback, this, std::placeholders::_1));
     
     imu_ready_sub_ = this->create_subscription<std_msgs::msg::Bool>(
         "bpc_prp_robot/imu_ready", 10,
-        std::bind(&CorridorLoopNode::imu_ready_callback, this, std::placeholders::_1));
+        std::bind(&MazeLoopNode::imu_ready_callback, this, std::placeholders::_1));
 
     line_detected_sub_ = this->create_subscription<std_msgs::msg::Bool>(
         "bpc_prp_robot/line_detected", 
         10,
-        std::bind(&CorridorLoopNode::line_detected_callback, this, std::placeholders::_1));
+        std::bind(&MazeLoopNode::line_detected_callback, this, std::placeholders::_1));
         
     motor_pub_ = this->create_publisher<std_msgs::msg::UInt8MultiArray>(
         "bpc_prp_robot/motor_commands", 10);
@@ -42,38 +42,38 @@ CorridorLoopNode::CorridorLoopNode(const rclcpp::NodeOptions& options)
     
     control_timer_ = this->create_wall_timer(
         std::chrono::milliseconds(20), // 50 Hz
-        std::bind(&CorridorLoopNode::control_loop_callback, this));
+        std::bind(&MazeLoopNode::control_loop_callback, this));
     
-    RCLCPP_INFO(this->get_logger(), "CorridorLoopNode started @ 50Hz");
+    RCLCPP_INFO(this->get_logger(), "MazeLoopNode started @ 50Hz");
 }
 
-void CorridorLoopNode::front_dist_callback(const std_msgs::msg::Float32::SharedPtr msg) { current_front_distance_ = msg->data; }
-void CorridorLoopNode::side_dist_callback(const std_msgs::msg::Float32MultiArray::SharedPtr msg) {
+void MazeLoopNode::front_dist_callback(const std_msgs::msg::Float32::SharedPtr msg) { current_front_distance_ = msg->data; }
+void MazeLoopNode::side_dist_callback(const std_msgs::msg::Float32MultiArray::SharedPtr msg) {
     if (msg->data.size() >= 2) { current_left_dist_ = msg->data[0]; current_right_dist_ = msg->data[1]; }
 }
-void CorridorLoopNode::yaw_callback(const std_msgs::msg::Float32::SharedPtr msg) { current_yaw_ = msg->data; }
-void CorridorLoopNode::error_callback(const std_msgs::msg::Float32::SharedPtr msg) { current_error_ = msg->data; has_new_error_ = true; }
-void CorridorLoopNode::imu_ready_callback(const std_msgs::msg::Bool::SharedPtr msg) {
+void MazeLoopNode::yaw_callback(const std_msgs::msg::Float32::SharedPtr msg) { current_yaw_ = msg->data; }
+void MazeLoopNode::error_callback(const std_msgs::msg::Float32::SharedPtr msg) { current_error_ = msg->data; has_new_error_ = true; }
+void MazeLoopNode::imu_ready_callback(const std_msgs::msg::Bool::SharedPtr msg) {
     if (!is_imu_ready_ && msg->data) RCLCPP_INFO(this->get_logger(), "IMU Calibration finished - starting movement!");
     is_imu_ready_ = msg->data;
 }
-void CorridorLoopNode::line_detected_callback(const std_msgs::msg::Bool::SharedPtr msg) {
+void MazeLoopNode::line_detected_callback(const std_msgs::msg::Bool::SharedPtr msg) {
     is_line_detected_ = msg->data;
 }
 
-float CorridorLoopNode::normalize_angle(float angle) const {
+float MazeLoopNode::normalize_angle(float angle) const {
     while (angle > static_cast<float>(M_PI)) angle -= 2.0f * static_cast<float>(M_PI);
     while (angle < -static_cast<float>(M_PI)) angle += 2.0f * static_cast<float>(M_PI);
     return angle;
 }
 
-void CorridorLoopNode::publish_motor_command(uint8_t left, uint8_t right) {
+void MazeLoopNode::publish_motor_command(uint8_t left, uint8_t right) {
     auto msg = std_msgs::msg::UInt8MultiArray();
     msg.data.push_back(left); msg.data.push_back(right);
     motor_pub_->publish(msg);
 }
 
-void CorridorLoopNode::control_loop_callback() {
+void MazeLoopNode::control_loop_callback() {
     rclcpp::Time now = this->now();
     double dt = (now - last_callback_time_).seconds();
     if (dt <= 0.0 || dt > 0.1) dt = 0.02;
@@ -96,7 +96,7 @@ void CorridorLoopNode::control_loop_callback() {
             if (is_imu_ready_) {
                 target_yaw_ = current_yaw_;
                 current_state_ = State::CORRIDOR_FOLLOWING;
-                RCLCPP_INFO(this->get_logger(), "IMU Ready. Starting corridor following.");
+                RCLCPP_INFO(this->get_logger(), "IMU Ready. Starting Maze following.");
             }
         }
         break;
