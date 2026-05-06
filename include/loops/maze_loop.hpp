@@ -37,8 +37,10 @@ private:
     float current_yaw_ = 0.0f;
     float target_yaw_ = 0.0f;
     float last_turn_direction_ = 1.0f;
-    float current_left_dist_ = 1.0f;
-    float current_right_dist_ = 1.0f;
+    float current_left_dist_ = 15.0f;
+    float current_right_dist_ = 15.0f;
+    float current_fl_dist_ = 15.0f;
+    float current_fr_dist_ = 15.0f;
     rclcpp::Time last_callback_time_;
     rclcpp::Time detection_time_;
     rclcpp::Time hole_start_time_;

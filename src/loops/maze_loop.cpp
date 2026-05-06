@@ -6,7 +6,7 @@ namespace nodes {
 
 MazeLoopNode::MazeLoopNode(const rclcpp::NodeOptions& options)
     : Node("Maze_loop_node", options),
-      pid_controller_(15.0f, 1.0f, 1.5f) // P-only
+      pid_controller_(15.0f, 0, 0) // P-only
 {
     error_sub_ = this->create_subscription<std_msgs::msg::Float32>(
         "bpc_prp_robot/error_lidar", 10,
@@ -43,13 +43,13 @@ MazeLoopNode::MazeLoopNode(const rclcpp::NodeOptions& options)
     control_timer_ = this->create_wall_timer(
         std::chrono::milliseconds(20), // 50 Hz
         std::bind(&MazeLoopNode::control_loop_callback, this));
-    
     RCLCPP_INFO(this->get_logger(), "MazeLoopNode started @ 50Hz");
 }
 
 void MazeLoopNode::front_dist_callback(const std_msgs::msg::Float32::SharedPtr msg) { current_front_distance_ = msg->data; }
 void MazeLoopNode::side_dist_callback(const std_msgs::msg::Float32MultiArray::SharedPtr msg) {
-    if (msg->data.size() >= 2) { current_left_dist_ = msg->data[0]; current_right_dist_ = msg->data[1]; }
+    if (msg->data.size() >= 2) { current_left_dist_ = msg->data[0]; current_right_dist_ = msg->data[1];         current_fl_dist_ = msg->data[2];
+        current_fr_dist_ = msg->data[3]; }
 }
 void MazeLoopNode::yaw_callback(const std_msgs::msg::Float32::SharedPtr msg) { current_yaw_ = msg->data; }
 void MazeLoopNode::error_callback(const std_msgs::msg::Float32::SharedPtr msg) { current_error_ = msg->data; has_new_error_ = true; }
@@ -141,8 +141,8 @@ void MazeLoopNode::control_loop_callback() {
             float total_cor = std::clamp(lidar_cor + imu_cor, -max_correction_, max_correction_);
 
             publish_motor_command(
-                static_cast<uint8_t>(std::clamp(base_speed_ - total_cor, 0.0f, 255.0f)),
-                static_cast<uint8_t>(std::clamp(base_speed_ + total_cor, 0.0f, 255.0f))
+                static_cast<uint8_t>(std::clamp(base_speed_ + total_cor, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(base_speed_ - total_cor, 0.0f, 255.0f))
             );
 
             // Detekcia križovatky
@@ -150,12 +150,12 @@ void MazeLoopNode::control_loop_callback() {
             
             if (hole) {
                 if ((now - hole_start_time_).seconds() > 0.3) { // Skrátená hysteréza pre rýchlejšiu odozvu
-                    current_state_ = State::DRIVE_TO_CENTER;
+                    // current_state_ = State::DRIVE_TO_CENTER;
                     detection_time_ = now;
                     last_turn_direction_ = L_open ? -1.0f : 1.0f;
                     target_yaw_ = current_yaw_;
                     pid_controller_.reset();
-                    RCLCPP_INFO(this->get_logger(), "Intersection! Turn %s", L_open ? "LEFT" : "RIGHT");
+                    // RCLCPP_INFO(this->get_logger(), "Intersection! Turn %s", L_open ? "LEFT" : "RIGHT");
                 }
             } else {
                 hole_start_time_ = now;
@@ -163,93 +163,95 @@ void MazeLoopNode::control_loop_callback() {
 
             if (should_log) {
                 RCLCPP_INFO(this->get_logger(), 
-                    "[FOLLOW] L:%.2f(%s) R:%.2f(%s) F:%.2f | Err:%.3f | Yaw:%.3f",
+                    "[FOLLOW] L:%.2f(%s) R:%.2f(%s)| FL:%.2f | FR:%.2f | F:%.2f | Err:%.3f | Yaw:%.3f",
                     current_left_dist_, L_valid ? "V" : "X",
                     current_right_dist_, R_valid ? "V" : "X",
+                    current_fl_dist_, 
+                    current_fr_dist_,
                     current_front_distance_, filtered_error_, yaw_dev);
             }
         }
         break;
 
-        case State::DRIVE_TO_CENTER:
-        {
-            float yaw_err = normalize_angle(target_yaw_ - current_yaw_);
-            float corr = std::clamp(yaw_err * 30.0f, -40.0f, 40.0f);
-            publish_motor_command(
-                static_cast<uint8_t>(std::clamp(base_speed_ - corr, 0.0f, 255.0f)),
-                static_cast<uint8_t>(std::clamp(base_speed_ + corr, 0.0f, 255.0f))
-            );
+        // case State::DRIVE_TO_CENTER:
+        // {
+        //     float yaw_err = normalize_angle(target_yaw_ - current_yaw_);
+        //     float corr = std::clamp(yaw_err * 30.0f, -40.0f, 40.0f);
+        //     publish_motor_command(
+        //         static_cast<uint8_t>(std::clamp(base_speed_ + corr, 0.0f, 255.0f)),
+        //         static_cast<uint8_t>(std::clamp(base_speed_ - corr, 0.0f, 255.0f))
+        //     );
 
-            if ((now - detection_time_).seconds() > 0.3) {
-                // Používame M_PI / 3.0f (60 stupňov) ako si chcel
-                target_yaw_ = normalize_angle(current_yaw_ + (last_turn_direction_ * (M_PI / 3.0f)));
-                current_state_ = State::TURNING;
-                RCLCPP_INFO(this->get_logger(), "Target yaw: %.3f rad", target_yaw_);
-            }
-        }
-        break;
+        //     if ((now - detection_time_).seconds() > 0.3) {
+        //         // Používame M_PI / 3.0f (60 stupňov) ako si chcel
+        //         target_yaw_ = normalize_angle(current_yaw_ + (last_turn_direction_ * (M_PI / 2.0f)));
+        //         current_state_ = State::TURNING;
+        //         RCLCPP_INFO(this->get_logger(), "Target yaw: %.3f rad", target_yaw_);
+        //     }
+        // }
+        // break;
 
-        case State::TURNING:
-        {
-            float yaw_err = normalize_angle(target_yaw_ - current_yaw_);
-            float corr = std::clamp(yaw_err * K_TURN_P, -TURN_MAX_PWM, TURN_MAX_PWM);
-            publish_motor_command(
-                static_cast<uint8_t>(std::clamp(127.0f - corr, 0.0f, 255.0f)),
-                static_cast<uint8_t>(std::clamp(127.0f + corr, 0.0f, 255.0f))
-            );
+        // case State::TURNING:
+        // {
+        //     float yaw_err = normalize_angle(target_yaw_ - current_yaw_);
+        //     float corr = std::clamp(yaw_err * K_TURN_P, -TURN_MAX_PWM, TURN_MAX_PWM);
+        //     publish_motor_command(
+        //         static_cast<uint8_t>(std::clamp(127.0f - corr, 0.0f, 255.0f)),
+        //         static_cast<uint8_t>(std::clamp(127.0f + corr ,0.0f, 255.0f))
+        //     );
 
-            if (std::abs(yaw_err) < YAW_PRECISION) {
-                publish_motor_command(127, 127);
-                current_state_ = State::EXIT_CORNER;
-                detection_time_ = now; // Reset time for exit logic
-                target_yaw_ = current_yaw_;
-                RCLCPP_INFO(this->get_logger(), "Turn complete. Exiting.");
-            }
+        //     if (std::abs(yaw_err) < YAW_PRECISION) {
+        //         publish_motor_command(127, 127);
+        //         current_state_ = State::EXIT_CORNER;
+        //         detection_time_ = now; // Reset time for exit logic
+        //         target_yaw_ = current_yaw_;
+        //         RCLCPP_INFO(this->get_logger(), "Turn complete. Exiting.");
+        //     }
             
-            if (should_log) {
-                 RCLCPP_INFO(this->get_logger(), "[TURN] Cur: %.3f | Tgt: %.3f | Err: %.3f", 
-                             current_yaw_, target_yaw_, yaw_err);
-            }
-        }
-        break;
+        //     if (should_log) {
+        //          RCLCPP_INFO(this->get_logger(), "[TURN] Cur: %.3f | Tgt: %.3f | Err: %.3f", 
+        //                      current_yaw_, target_yaw_, yaw_err);
+        //     }
+        // }
+        // break;
 
-             case State::EXIT_CORNER:
-        {
-            // Reset flagu pri prvom vstupe (alebo ho resetuj v TURNING)
-            // Lepšie: Resetuj ho v DRIVE_TO_CENTER alebo na začiatku EXIT ak je time 0
+        //      case State::EXIT_CORNER:
+        // {
+        //     // Reset flagu pri prvom vstupe (alebo ho resetuj v TURNING)
+        //     // Lepšie: Resetuj ho v DRIVE_TO_CENTER alebo na začiatku EXIT ak je time 0
             
-            float yaw_err = normalize_angle(target_yaw_ - current_yaw_);
-            float imu_cor = yaw_err * 2.5f; 
-            float total_cor = std::clamp(imu_cor, -40.0f, 40.0f);
+        //     float yaw_err = normalize_angle(target_yaw_ - current_yaw_);
+        //     float imu_cor = yaw_err * 2.5f; 
+        //     float total_cor = std::clamp(imu_cor, -40.0f, 40.0f);
 
-            publish_motor_command(
-                static_cast<uint8_t>(std::clamp(base_speed_ - total_cor, 0.0f, 255.0f)),
-                static_cast<uint8_t>(std::clamp(base_speed_ + total_cor, 0.0f, 255.0f))
-            );
+        //     publish_motor_command(
+        //         static_cast<uint8_t>(std::clamp(base_speed_ + total_cor, 0.0f, 255.0f)),
+        //         static_cast<uint8_t>(std::clamp(base_speed_ - total_cor, 0.0f, 255.0f))
+        //     );
 
-            if (!exit_line_seen_ && is_line_detected_) {
-                exit_line_seen_ = true;
-                exit_line_detect_time_ = now;
-                RCLCPP_INFO(this->get_logger(), "Line detected in EXIT!");
-            }
+        //     if (!exit_line_seen_ && is_line_detected_) {
+        //         exit_line_seen_ = true;
+        //         exit_line_detect_time_ = now;
+        //         RCLCPP_INFO(this->get_logger(), "Line detected in EXIT!");
+        //     }
 
-            if (exit_line_seen_ && (now - exit_line_detect_time_).seconds() > 1.0) {
-                RCLCPP_INFO(this->get_logger(), "Stable after line. Resuming Following.");
-                pid_controller_.reset();
-                target_yaw_ = current_yaw_; 
-                current_state_ = State::CORRIDOR_FOLLOWING;
-                exit_line_seen_ = false; // Reset pre budúcu križovatku
-            }
+        //     if (exit_line_seen_ && (now - exit_line_detect_time_).seconds() > 1.0) {
+        //         RCLCPP_INFO(this->get_logger(), "Stable after line. Resuming Following.");
+        //         pid_controller_.reset();
+        //         target_yaw_ = current_yaw_; 
+        //         current_state_ = State::CORRIDOR_FOLLOWING;
+        //         exit_line_seen_ = false; // Reset pre budúcu križovatku
+        //     }
 
-            // Timeout ak čiara nie je
-            if (!exit_line_seen_ && (now - detection_time_).seconds() > 3.0) {
-                 RCLCPP_WARN(this->get_logger(), "Exit timeout. Resuming.");
-                 pid_controller_.reset();
-                 target_yaw_ = current_yaw_; 
-                 current_state_ = State::CORRIDOR_FOLLOWING;
-            }
-        }
-        break;
+        //     // Timeout ak čiara nie je
+        //     if (!exit_line_seen_ && (now - detection_time_).seconds() > 3.0) {
+        //          RCLCPP_WARN(this->get_logger(), "Exit timeout. Resuming.");
+        //          pid_controller_.reset();
+        //          target_yaw_ = current_yaw_; 
+        //          current_state_ = State::CORRIDOR_FOLLOWING;
+        //     }
+        // }
+        // break;
 
         default: break;
     }

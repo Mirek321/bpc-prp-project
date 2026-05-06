@@ -49,7 +49,7 @@ void LidarNode::callback(const sensor_msgs::msg::LaserScan::SharedPtr msg) {
     error_publisher_->publish(error_msg);
 
     auto sides_msg = std_msgs::msg::Float32MultiArray();
-    sides_msg.data = {results.left, results.right};
+    sides_msg.data = {results.left, results.right, results.front_left, results.front_right};
     side_distances_publisher_->publish(sides_msg);
 
     auto front_msg = std_msgs::msg::Float32();
