@@ -47,7 +47,7 @@ namespace nodes {
     float r_norm = (right - (float)MIN_R_VALUE) / (MAX_R_VALUE - (float)MIN_R_VALUE);
     
     // DiscreteLinePose current_discrete = estimate_discrete_line_pose(l_norm, r_norm);
-    bool line_is_visible = (l_norm > threshold_l) || (r_norm > threshold_r);
+    bool line_is_visible = (left > threshold_l) || (right > threshold_r);
     auto pose_msg = std_msgs::msg::Float32();
     pose_msg.data = current_continuous;
     error_publisher_->publish(pose_msg);

@@ -15,7 +15,7 @@ public:
 
 private:
     // State Machine
-    enum class State { CALIBRATION, CORRIDOR_FOLLOWING, DRIVE_TO_CENTER, TURNING, EXIT_CORNER };
+    enum class State { CALIBRATION, CORRIDOR_FOLLOWING, ONE_WALL_FOLLOWING, INTERSECTION_STRAIGHT, DRIVE_TO_CENTER, TURNING, EXIT_CORNER };
     State current_state_ = State::CALIBRATION;
 
     // Subscribers / Publishers / Timer
@@ -44,6 +44,8 @@ private:
     rclcpp::Time last_callback_time_;
     rclcpp::Time detection_time_;
     rclcpp::Time hole_start_time_;
+    rclcpp::Time last_state_change_time_;
+    rclcpp::Time corridor_entry_time_;
 
     // Control Constants (BPC-PRP aligned)
     const float base_speed_ = 140.0f;
@@ -63,6 +65,20 @@ private:
     bool is_line_detected_ = false; // Premenná na uloženie stavu (true/false)
     bool exit_line_seen_ = false;
     rclcpp::Time exit_line_detect_time_;
+
+    float target_wall_distance_ = 0.0f;
+    bool following_left_wall_ = true;
+    bool is_t_intersection_ = false;
+    float final_correction_ = 0.0f;
+    bool left_opening = false;
+    bool right_opening = false;
+    bool L_valid = true;
+    bool R_valid = true;
+
+    const float OPENING_THRESHOLD = 0.35f;
+    const float TURN_DISTANCE = 0.25f;
+    bool is_dead_end_turn_ = false;
+
 
     // --- Callbacks ---
 

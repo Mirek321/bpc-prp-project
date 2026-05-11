@@ -44,8 +44,8 @@ namespace nodes {
         rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr error_publisher_; 
         rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr detected_publisher_;
         rclcpp::Time last_process_time_;
-        float threshold_l = 0.7;
-        float threshold_r = 0.4;
+        float threshold_l = 400;
+        float threshold_r = 400;
         LineSensorCalibration calibration_;
 
         void on_line_sensors_msg(const std_msgs::msg::UInt16MultiArray::SharedPtr msg);

@@ -6,7 +6,7 @@ namespace nodes {
 
 MazeLoopNode::MazeLoopNode(const rclcpp::NodeOptions& options)
     : Node("Maze_loop_node", options),
-      pid_controller_(15.0f, 0, 0) // P-only
+      pid_controller_(8.0f, 0.2f, 2.0f)
 {
     error_sub_ = this->create_subscription<std_msgs::msg::Float32>(
         "bpc_prp_robot/error_lidar", 10,
@@ -90,185 +90,276 @@ void MazeLoopNode::control_loop_callback() {
         return;
     }
 
+    float final_correction = 0.0f;
+
     switch (current_state_) {
         case State::CALIBRATION:
         {
             if (is_imu_ready_) {
                 target_yaw_ = current_yaw_;
                 current_state_ = State::CORRIDOR_FOLLOWING;
+                last_state_change_time_ = now;
+                corridor_entry_time_ = now;
                 RCLCPP_INFO(this->get_logger(), "IMU Ready. Starting Maze following.");
             }
         }
         break;
 
-        case State::CORRIDOR_FOLLOWING:
+   case State::CORRIDOR_FOLLOWING:
         {
-            const float MIN_LIDAR   = 0.16f;
-            const float MAX_FOLLOW  = 1.0f;
-            const float OPEN_DIST   = 0.40f; // Tu môžeš skúsiť 0.50f ak deteguje príliš skoro
-            const float DESIRED     = 0.22f;
+            // Tvoje logika detekce křižovatek a rohů
+            // if ((now - corridor_entry_time_).seconds() > 1.5f) {
 
-            bool L_valid = (current_left_dist_ > MIN_LIDAR && current_left_dist_ < MAX_FOLLOW);
-            bool R_valid = (current_right_dist_ > MIN_LIDAR && current_right_dist_ < MAX_FOLLOW);
-
-            bool L_open = (current_left_dist_ > OPEN_DIST);
-            bool R_open = (current_right_dist_ > OPEN_DIST);
-            bool front_close = (current_front_distance_ < 0.35f); // Predok blízko
-
-            float raw_err = 0.0f;
-            if (L_valid && R_valid) {
-                raw_err = (current_right_dist_ - current_left_dist_) ;
-            }
-            else if (L_valid && !R_valid) {
-                raw_err = DESIRED_HALF_WIDTH - current_left_dist_; 
-            } 
-            else if (!L_valid && R_valid) {
-                raw_err = current_right_dist_ - DESIRED_HALF_WIDTH;
-            } 
-
-            filtered_error_ = ERROR_ALPHA * raw_err + (1.0f - ERROR_ALPHA) * filtered_error_;
-            // Deadband je vypnutý podľa tvojho predchádzajúceho nastavenia, ak chceš zapnúť:
-            // if (std::abs(filtered_error_) < ERROR_DEADBAND) filtered_error_ = 0.0f;
-
-            float yaw_dev = normalize_angle(target_yaw_ - current_yaw_);
-            // if (std::abs(yaw_dev) < YAW_DEADBAND) yaw_dev = 0.0f;
-//             if (std::abs(yaw_dev) > 0.2f) {
-//     target_yaw_ = current_yaw_;  // Reset ak je drift veľký
-//     yaw_dev = 0.0f;
-// }
-            float lidar_cor = pid_controller_.step(filtered_error_, static_cast<float>(dt));
-            float imu_cor   = yaw_dev * YAW_P_GAIN;
-            float total_cor = std::clamp(lidar_cor + imu_cor, -max_correction_, max_correction_);
-
-            publish_motor_command(
-                static_cast<uint8_t>(std::clamp(base_speed_ + total_cor, 0.0f, 255.0f)),
-                static_cast<uint8_t>(std::clamp(base_speed_ - total_cor, 0.0f, 255.0f))
-            );
-
-            // Detekcia križovatky
-            bool hole = front_close && (L_open || R_open);
-            
-            if (hole) {
-                if ((now - hole_start_time_).seconds() > 0.3) { // Skrátená hysteréza pre rýchlejšiu odozvu
-                    // current_state_ = State::DRIVE_TO_CENTER;
+             if (current_front_distance_ < 0.25f && 
+                    current_left_dist_ < 0.25f && 
+                    current_right_dist_ < 0.25f) {
+                    
+                    RCLCPP_INFO(this->get_logger(), "🚫 DEAD END → 180° turn");
+                    
+                    target_yaw_ = normalize_angle(current_yaw_ + static_cast<float>(M_PI));  // flip direction
+                    last_turn_direction_ = 1.0f;  // ľubovoľné, len pre log
+                    is_dead_end_turn_ = true;     // ← FLAG: toto je dead-end turn
                     detection_time_ = now;
-                    last_turn_direction_ = L_open ? -1.0f : 1.0f;
-                    target_yaw_ = current_yaw_;
-                    pid_controller_.reset();
-                    // RCLCPP_INFO(this->get_logger(), "Intersection! Turn %s", L_open ? "LEFT" : "RIGHT");
+                    current_state_ = State::TURNING;
+                    return;
                 }
-            } else {
-                hole_start_time_ = now;
-            }
 
-            if (should_log) {
+                L_valid = (current_left_dist_ > MIN_LIDAR_DIST);
+                R_valid = (current_right_dist_ > MIN_LIDAR_DIST);
+
+                if (!L_valid) {
+                    current_state_ = State::ONE_WALL_FOLLOWING;
+                    following_left_wall_ = false; // sledujeme pravou, levá zmizela
+                    target_wall_distance_ = DESIRED_HALF_WIDTH;
+                    return;
+                } 
+                else if (!R_valid) {
+                    current_state_ = State::ONE_WALL_FOLLOWING;
+                    following_left_wall_ = true; // sledujeme levou, pravá zmizela
+                    target_wall_distance_ = DESIRED_HALF_WIDTH;
+                    return;
+                }
+                left_opening = (current_left_dist_ > OPENING_THRESHOLD);
+                right_opening = (current_right_dist_ > OPENING_THRESHOLD);
+
+                if (left_opening && right_opening) {
+                    current_state_ = State::INTERSECTION_STRAIGHT;
+                    is_t_intersection_ = (current_front_distance_ < 0.5f);
+                    return;
+                } 
+                else if (left_opening) {
+                    current_state_ = State::ONE_WALL_FOLLOWING;
+                    following_left_wall_ = false; // sledujeme pravou, levá zmizela
+                    target_wall_distance_ = current_right_dist_;
+                    return;
+                } 
+                else if (right_opening) {
+                    current_state_ = State::ONE_WALL_FOLLOWING;
+                    following_left_wall_ = true; // sledujeme levou, pravá zmizela
+                    target_wall_distance_ = current_left_dist_;
+                    return;
+                }
+            // }
+   
+
+            // Výpočet korekce: PID z chyby Lidaru + P složka z YAW pro směrovou stabilitu
+            float yaw_error = normalize_angle(target_yaw_ - current_yaw_);
+            final_correction = pid_controller_.step(current_error_, dt) + (yaw_error * 2.5f);
+
+              if (should_log) {
                 RCLCPP_INFO(this->get_logger(), 
-                    "[FOLLOW] L:%.2f(%s) R:%.2f(%s)| FL:%.2f | FR:%.2f | F:%.2f | Err:%.3f | Yaw:%.3f",
-                    current_left_dist_, L_valid ? "V" : "X",
-                    current_right_dist_, R_valid ? "V" : "X",
-                    current_fl_dist_, 
-                    current_fr_dist_,
-                    current_front_distance_, filtered_error_, yaw_dev);
+                    "[FOLLOW] L:%.2f(%s) R:%.2f(%s) F:%.2f | FL:%.2f | FR:%.2f| Err:%.3f | Yaw:%.3f",
+                    current_left_dist_, left_opening ? "V" : "X",
+                    current_right_dist_, right_opening ? "V" : "X",
+                    current_fl_dist_, current_fr_dist_,
+                    current_front_distance_, final_correction, yaw_error);
             }
         }
         break;
 
-        // case State::DRIVE_TO_CENTER:
-        // {
-        //     float yaw_err = normalize_angle(target_yaw_ - current_yaw_);
-        //     float corr = std::clamp(yaw_err * 30.0f, -40.0f, 40.0f);
-        //     publish_motor_command(
-        //         static_cast<uint8_t>(std::clamp(base_speed_ + corr, 0.0f, 255.0f)),
-        //         static_cast<uint8_t>(std::clamp(base_speed_ - corr, 0.0f, 255.0f))
-        //     );
+        case State::ONE_WALL_FOLLOWING:
+        {
+                     if (current_front_distance_ < 0.25f && 
+                    current_left_dist_ < 0.25f && 
+                    current_right_dist_ < 0.25f) {
+                    
+                    RCLCPP_INFO(this->get_logger(), "🚫 DEAD END → 180° turn");
+                    
+                    target_yaw_ = normalize_angle(current_yaw_ + static_cast<float>(M_PI));  // flip direction
+                    last_turn_direction_ = 1.0f;  // ľubovoľné, len pre log
+                    is_dead_end_turn_ = true;     // ← FLAG: toto je dead-end turn
+                    detection_time_ = now;
+                    current_state_ = State::TURNING;
+                    return;
+                }
+            constexpr float CORRIDOR_RETURN_THRESH = 0.30f;
+                if (current_left_dist_ < CORRIDOR_RETURN_THRESH && current_right_dist_ < CORRIDOR_RETURN_THRESH && R_valid && L_valid) {
+                RCLCPP_INFO(this->get_logger(), "🔄 Both walls detected - resuming CORRIDOR_FOLLOWING");
+                corridor_entry_time_ = now;
+                target_yaw_ = current_yaw_;       // Lock current heading
+                pid_controller_.reset();          // Clear wall-following integral (bpc-prp-6-pid)
+                current_state_ = State::CORRIDOR_FOLLOWING;
+                return; // Skip rest of loop this cycle
+            }
+            // Kontrola, zda se z rohu nevyklubala křižovatka
+            if (current_left_dist_ > OPENING_THRESHOLD && current_right_dist_ > OPENING_THRESHOLD) {
+                current_state_ = State::INTERSECTION_STRAIGHT;
+                is_t_intersection_ = (current_front_distance_ < 0.5f);
+                return;
+            }
+            // "Umělá" chyba podle vzdálenosti od jedné stěny
+            float one_wall_error = following_left_wall_ ? 
+                                   (current_left_dist_ - target_wall_distance_) : 
+                                   (target_wall_distance_ - current_right_dist_);
 
-        //     if ((now - detection_time_).seconds() > 0.3) {
-        //         // Používame M_PI / 3.0f (60 stupňov) ako si chcel
-        //         target_yaw_ = normalize_angle(current_yaw_ + (last_turn_direction_ * (M_PI / 2.0f)));
-        //         current_state_ = State::TURNING;
-        //         RCLCPP_INFO(this->get_logger(), "Target yaw: %.3f rad", target_yaw_);
-        //     }
-        // }
-        // break;
+            if (current_front_distance_ < TURN_DISTANCE) {
+                // Určení směru zatáčení podle toho, která stěna chybí
+                float turn_dir = following_left_wall_ ? -1.0f : 1.0f; 
+                target_yaw_ = normalize_angle(target_yaw_ + (turn_dir * M_PI / 2.0));
+                last_turn_direction_ = turn_dir;
+                final_correction = 0.0f; 
+                publish_motor_command(127, 127); 
+                detection_time_ = now;
+                current_state_ = State::TURNING;
+                return;
+            }
 
-        // case State::TURNING:
-        // {
-        //     float yaw_err = normalize_angle(target_yaw_ - current_yaw_);
-        //     float corr = std::clamp(yaw_err * K_TURN_P, -TURN_MAX_PWM, TURN_MAX_PWM);
-        //     publish_motor_command(
-        //         static_cast<uint8_t>(std::clamp(127.0f - corr, 0.0f, 255.0f)),
-        //         static_cast<uint8_t>(std::clamp(127.0f + corr ,0.0f, 255.0f))
-        //     );
+            final_correction = pid_controller_.step(one_wall_error, dt) + (normalize_angle(target_yaw_ - current_yaw_) * 2.0f);
 
-        //     if (std::abs(yaw_err) < YAW_PRECISION) {
-        //         publish_motor_command(127, 127);
-        //         current_state_ = State::EXIT_CORNER;
-        //         detection_time_ = now; // Reset time for exit logic
-        //         target_yaw_ = current_yaw_;
-        //         RCLCPP_INFO(this->get_logger(), "Turn complete. Exiting.");
-        //     }
+            if (should_log) {
+                RCLCPP_INFO(this->get_logger(), 
+                    "[FOLLOW] L:%.2f(%s) R:%.2f(%s) F:%.2f | FL:%.2f | FR:%.2f| Err:%.3f",
+                    current_left_dist_, left_opening ? "V" : "X",
+                    current_right_dist_, right_opening ? "V" : "X",
+                    current_fl_dist_, current_fr_dist_,
+                    current_front_distance_, final_correction);
+            }
+        }
+        break;
+
+        case State::INTERSECTION_STRAIGHT:
+        {
+            float yaw_error = normalize_angle(target_yaw_ - current_yaw_);
+            final_correction = yaw_error * 4.5; // Čistě IMU řízení přes křižovatku
+
+            if (is_t_intersection_ && current_front_distance_ < TURN_DISTANCE) {
+                // T-křižovatka: vyber volnou cestu
+                last_turn_direction_ = (current_right_dist_ > OPENING_THRESHOLD) ? -1.0f : 1.0f;
+                target_yaw_ = normalize_angle(target_yaw_ + (last_turn_direction_ * M_PI / 2.0));
+                detection_time_ = now;
+                current_state_ = State::TURNING;
+                return;
+            } 
+            else if (!is_t_intersection_ && current_left_dist_ < OPENING_THRESHOLD && current_right_dist_ < OPENING_THRESHOLD) {
+                corridor_entry_time_ = now;
+                current_state_ = State::CORRIDOR_FOLLOWING;
+            }
+            // else if((!is_t_intersection_ ) && 
+            //         (now - corridor_entry_time_).seconds() > 2.0f) { // Počkaj 200ms na stabilizáciu
+            // RCLCPP_INFO(this->get_logger(), "🔄 Forced right turn at intersection");
+        
+        // target_yaw_ = normalize_angle(target_yaw_ + static_cast<float>(M_PI) / 2.0f); // +90°
+        // last_turn_direction_ = 1.0f;
+        // detection_time_ = now;
+        // current_state_ = State::TURNING;
+        // return; // ← Dôležité!
+        }
+        break;
+
+        case State::TURNING:
+        {
+            float yaw_error = normalize_angle(target_yaw_ - current_yaw_);
+            if (std::abs(yaw_error) < YAW_PRECISION) {
+                detection_time_ = now; 
+                if (is_dead_end_turn_) {
+                    // Dead end: po 180° sa vráť do chodby
+                    is_dead_end_turn_ = false;  // reset flag
+                    pid_controller_.reset();    // bpc-prp-6-pid: anti-windup
+                    target_yaw_ = current_yaw_; // lock heading
+                    corridor_entry_time_ = now;
+                    current_state_ = State::CORRIDOR_FOLLOWING;
+                    RCLCPP_INFO(this->get_logger(), "180° done - exiting dead end");
+                } else {
+                    // Normálna zatáčka: pokračuj do EXIT_CORNER
+                    current_state_ = State::EXIT_CORNER;
+                }
+            } else {
+                // Rotace na místě s pevným výkonem
+                uint8_t power = 15; 
+                if (yaw_error > 0) publish_motor_command(127 - power, 127 + power);
+                else publish_motor_command(127 + power, 127 - power);
+                return;
+            }
+        }
+        break;
+        
+        case State::EXIT_CORNER:
+        {
+    
+            // Reset flagu pri prvom vstupe (alebo ho resetuj v TURNING)
+            // Lepšie: Resetuj ho v DRIVE_TO_CENTER alebo na začiatku EXIT ak je time 0
             
-        //     if (should_log) {
-        //          RCLCPP_INFO(this->get_logger(), "[TURN] Cur: %.3f | Tgt: %.3f | Err: %.3f", 
-        //                      current_yaw_, target_yaw_, yaw_err);
-        //     }
-        // }
-        // break;
+            float yaw_err = normalize_angle(target_yaw_ - current_yaw_);
+            float imu_cor = yaw_err * 4.0f; 
+            float total_cor = std::clamp(imu_cor, -40.0f, 40.0f);
 
-        //      case State::EXIT_CORNER:
-        // {
-        //     // Reset flagu pri prvom vstupe (alebo ho resetuj v TURNING)
-        //     // Lepšie: Resetuj ho v DRIVE_TO_CENTER alebo na začiatku EXIT ak je time 0
-            
-        //     float yaw_err = normalize_angle(target_yaw_ - current_yaw_);
-        //     float imu_cor = yaw_err * 2.5f; 
-        //     float total_cor = std::clamp(imu_cor, -40.0f, 40.0f);
+            publish_motor_command(
+                static_cast<uint8_t>(std::clamp(base_speed_ - total_cor, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(base_speed_ + total_cor, 0.0f, 255.0f))
+            );
 
-        //     publish_motor_command(
-        //         static_cast<uint8_t>(std::clamp(base_speed_ + total_cor, 0.0f, 255.0f)),
-        //         static_cast<uint8_t>(std::clamp(base_speed_ - total_cor, 0.0f, 255.0f))
-        //     );
+            if (!exit_line_seen_ && is_line_detected_) {
+                exit_line_seen_ = true;
+                exit_line_detect_time_ = now;
+                RCLCPP_INFO(this->get_logger(), "Line detected in EXIT!");
+            }
 
-        //     if (!exit_line_seen_ && is_line_detected_) {
-        //         exit_line_seen_ = true;
-        //         exit_line_detect_time_ = now;
-        //         RCLCPP_INFO(this->get_logger(), "Line detected in EXIT!");
-        //     }
+            if (exit_line_seen_ && (now - exit_line_detect_time_).seconds() > 1.0) {
+                RCLCPP_INFO(this->get_logger(), "Stable after line. Resuming Following.");
+                pid_controller_.reset();
+                target_yaw_ = current_yaw_; 
+                current_state_ = State::CORRIDOR_FOLLOWING;
+                exit_line_seen_ = false; // Reset pre budúcu križovatku
+                return;
+            }
 
-        //     if (exit_line_seen_ && (now - exit_line_detect_time_).seconds() > 1.0) {
-        //         RCLCPP_INFO(this->get_logger(), "Stable after line. Resuming Following.");
-        //         pid_controller_.reset();
-        //         target_yaw_ = current_yaw_; 
-        //         current_state_ = State::CORRIDOR_FOLLOWING;
-        //         exit_line_seen_ = false; // Reset pre budúcu križovatku
-        //     }
-
-        //     // Timeout ak čiara nie je
-        //     if (!exit_line_seen_ && (now - detection_time_).seconds() > 3.0) {
-        //          RCLCPP_WARN(this->get_logger(), "Exit timeout. Resuming.");
-        //          pid_controller_.reset();
-        //          target_yaw_ = current_yaw_; 
-        //          current_state_ = State::CORRIDOR_FOLLOWING;
-        //     }
-        // }
-        // break;
-
+            // Timeout ak čiara nie je
+            if (!exit_line_seen_ && (now - detection_time_).seconds() > 2.0) {
+                 RCLCPP_WARN(this->get_logger(), "Exit timeout. Resuming.");
+                 pid_controller_.reset();
+                 target_yaw_ = current_yaw_; 
+                 current_state_ = State::CORRIDOR_FOLLOWING;
+                 exit_line_seen_ = false;
+                 return;
+            }
+        }
+        break;
         default: break;
     }
+       
+ 
     
+    // --- Výpočet PWM (inspirováno _better pro hladší chod) ---
+    final_correction = std::clamp(final_correction, -max_correction_, max_correction_);
+    
+    uint8_t l_speed = static_cast<uint8_t>(std::clamp(base_speed_ - final_correction, 0.0f, 255.0f));
+    uint8_t r_speed = static_cast<uint8_t>(std::clamp(base_speed_ + final_correction, 0.0f, 255.0f));
+    
+    publish_motor_command(l_speed, r_speed);
     // --- GLOBAL STATE LOG ---
     if (should_log) {
         std::string state_str = "UNKNOWN";
         switch (current_state_) {
             case State::CALIBRATION:       state_str = "CALIBRATION"; break;
             case State::CORRIDOR_FOLLOWING: state_str = "FOLLOWING"; break;
+            case State::ONE_WALL_FOLLOWING: state_str = "ONE WALL"; break;
+            case State::INTERSECTION_STRAIGHT: state_str = "INTERSECTION"; break;
             case State::DRIVE_TO_CENTER:   state_str = "CENTER"; break;
             case State::TURNING:           state_str = "TURNING"; break;
             case State::EXIT_CORNER:       state_str = "EXIT"; break;
         }
         RCLCPP_INFO(this->get_logger(), "CURRENT STATE: %s", state_str.c_str());
     }
+    }
 
-} // End of control_loop_callback
-
-} // namespace nodes
+}
