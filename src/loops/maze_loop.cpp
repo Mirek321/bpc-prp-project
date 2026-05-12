@@ -122,6 +122,7 @@ void MazeLoopNode::control_loop_callback() {
     switch (current_state_) {
         case State::CALIBRATION:
         {
+            publish_motor_command(127, 127);   
             if (is_imu_ready_) {
                 target_yaw_ = current_yaw_;
                 current_state_ = State::CORRIDOR_FOLLOWING;
@@ -397,7 +398,7 @@ break;
     }
        
  
-    if (current_state_ != State::TURNING || current_state_ == State::EXIT_CORNER) {
+    if (current_state_ != State::TURNING && current_state_ != State::EXIT_CORNER && current_state_ != State::CALIBRATION) {
         // --- Výpočet PWM (inspirováno _better pro hladší chod) ---
         final_correction = std::clamp(final_correction, -max_correction_, max_correction_);
         
