@@ -6,7 +6,7 @@ namespace nodes {
 
 MazeLoopNode::MazeLoopNode(const rclcpp::NodeOptions& options)
     : Node("Maze_loop_node", options),
-      pid_controller_(8.0f, 0.2f, 2.0f)
+      pid_controller_(10.0f, 0.2f, 2.0f)
 {
     error_sub_ = this->create_subscription<std_msgs::msg::Float32>(
         "bpc_prp_robot/error_lidar", 10,
@@ -164,7 +164,7 @@ void MazeLoopNode::control_loop_callback() {
 
             // Výpočet korekce: PID z chyby Lidaru + P složka z YAW pro směrovou stabilitu
             float yaw_error = normalize_angle(target_yaw_ - current_yaw_);
-            final_correction = pid_controller_.step(current_error_, dt) + (yaw_error * 2.5f);
+            final_correction = pid_controller_.step(current_error_, dt) + (yaw_error * 3.0f);
 
               if (should_log) {
                 RCLCPP_INFO(this->get_logger(), 
@@ -224,7 +224,7 @@ void MazeLoopNode::control_loop_callback() {
                 return;
             }
 
-            final_correction = pid_controller_.step(one_wall_error, dt) + (normalize_angle(target_yaw_ - current_yaw_) * 2.0f);
+            final_correction = pid_controller_.step(one_wall_error, dt) + (normalize_angle(target_yaw_ - current_yaw_) * 0.5f);
 
             if (should_log) {
                 RCLCPP_INFO(this->get_logger(), 
@@ -266,32 +266,31 @@ void MazeLoopNode::control_loop_callback() {
         }
         break;
 
+   
         case State::TURNING:
-        {
-            float yaw_error = normalize_angle(target_yaw_ - current_yaw_);
-            if (std::abs(yaw_error) < YAW_PRECISION) {
-                detection_time_ = now; 
-                if (is_dead_end_turn_) {
-                    // Dead end: po 180° sa vráť do chodby
-                    is_dead_end_turn_ = false;  // reset flag
-                    pid_controller_.reset();    // bpc-prp-6-pid: anti-windup
-                    target_yaw_ = current_yaw_; // lock heading
-                    corridor_entry_time_ = now;
-                    current_state_ = State::CORRIDOR_FOLLOWING;
-                    RCLCPP_INFO(this->get_logger(), "180° done - exiting dead end");
-                } else {
-                    // Normálna zatáčka: pokračuj do EXIT_CORNER
-                    current_state_ = State::EXIT_CORNER;
-                }
-            } else {
-                // Rotace na místě s pevným výkonem
-                uint8_t power = 15; 
-                if (yaw_error > 0) publish_motor_command(127 - power, 127 + power);
-                else publish_motor_command(127 + power, 127 - power);
+       {
+            float yaw_err = normalize_angle(target_yaw_ - current_yaw_);
+            float corr = std::clamp(yaw_err * K_TURN_P, -TURN_MAX_PWM, TURN_MAX_PWM);
+            publish_motor_command(
+                static_cast<uint8_t>(std::clamp(127.0f - corr, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(127.0f + corr, 0.0f, 255.0f))
+            );
+
+            if (std::abs(yaw_err) < YAW_PRECISION) {
+                publish_motor_command(127, 127);
+                current_state_ = State::EXIT_CORNER;
+                detection_time_ = now; // Reset time for exit logic
+                target_yaw_ = current_yaw_;
+                RCLCPP_INFO(this->get_logger(), "Turn complete. Exiting.");
                 return;
             }
+            
+            if (should_log) {
+                 RCLCPP_INFO(this->get_logger(), "[TURN] Cur: %.3f | Tgt: %.3f | Err: %.3f", 
+                             current_yaw_, target_yaw_, yaw_err);
+            }
         }
-        break;
+break;
         
         case State::EXIT_CORNER:
         {
@@ -324,7 +323,7 @@ void MazeLoopNode::control_loop_callback() {
             }
 
             // Timeout ak čiara nie je
-            if (!exit_line_seen_ && (now - detection_time_).seconds() > 2.0) {
+            if (!exit_line_seen_ && (now - detection_time_).seconds() > 4.0) {
                  RCLCPP_WARN(this->get_logger(), "Exit timeout. Resuming.");
                  pid_controller_.reset();
                  target_yaw_ = current_yaw_; 
@@ -354,7 +353,6 @@ void MazeLoopNode::control_loop_callback() {
             case State::CORRIDOR_FOLLOWING: state_str = "FOLLOWING"; break;
             case State::ONE_WALL_FOLLOWING: state_str = "ONE WALL"; break;
             case State::INTERSECTION_STRAIGHT: state_str = "INTERSECTION"; break;
-            case State::DRIVE_TO_CENTER:   state_str = "CENTER"; break;
             case State::TURNING:           state_str = "TURNING"; break;
             case State::EXIT_CORNER:       state_str = "EXIT"; break;
         }
