@@ -58,8 +58,8 @@ namespace nodes {
     detected_publisher_->publish(detected_msg);
     static int counter = 0;
     if (++counter % 50 == 0) {
-        RCLCPP_INFO(this->get_logger(), 
-            "Sensors: L=%u R=%u | Error=%.2f", left, right, current_continuous);
+        //RCLCPP_INFO(this->get_logger(), 
+        //    "Sensors: L=%u R=%u | Error=%.2f", left, right, current_continuous);
     }
 }
 

@@ -6,6 +6,7 @@
 #include <std_msgs/msg/u_int8_multi_array.hpp>
 #include <std_msgs/msg/bool.hpp> 
 #include "algorithms/pid.hpp"
+#include <std_msgs/msg/empty.hpp>
 
 namespace nodes {
 class MazeLoopNode : public rclcpp::Node {
@@ -24,10 +25,12 @@ private:
     rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr yaw_sub_;
     rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr side_dist_sub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr imu_ready_sub_;
+    rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr imu_reset_pub_;
     rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr motor_pub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr line_detected_sub_;
     rclcpp::TimerBase::SharedPtr control_timer_;
     algorithms::Pid pid_controller_;
+    algorithms::Pid pid_controller_imu_;
 
     // State & Sensor Data
     bool is_imu_ready_ = false;
@@ -56,11 +59,11 @@ private:
     const float ERROR_DEADBAND = 0.02f;
     const float ERROR_ALPHA = 0.2f;
     const float YAW_P_GAIN = 3.5f;
-    const float K_TURN_P = 30.0f;
+    const float K_TURN_P = 10.0f;
     const float TURN_MAX_PWM = 15.0f;
     const float OPEN_DIST = 0.40f;       // >40cm = otvorený priestor
     const float MIN_LIDAR_DIST = 0.16f;  // Slepá zóna LiDARu
-    const float DESIRED_HALF_WIDTH = 0.18f;
+    const float DESIRED_HALF_WIDTH = 0.22f;
     const float EXIT_WALL_THRESHOLD = 1.8f;
     bool is_line_detected_ = false; // Premenná na uloženie stavu (true/false)
     bool exit_line_seen_ = false;
@@ -87,6 +90,7 @@ private:
     float filtered_error_ = 0.0f;
 
     // Callbacks & Helpers
+    void trigger_imu_reset();
     void control_loop_callback();
     void error_callback(const std_msgs::msg::Float32::SharedPtr msg);
     void front_dist_callback(const std_msgs::msg::Float32::SharedPtr msg);

@@ -82,12 +82,12 @@ namespace algorithms {
             };
 
             return LidarFilterResults{
-                .front = safe_median(front, 15.0f),
-                .back  = safe_median(back, 15.0f),
-                .left  = safe_median(left, 15.0f),
-                .right = safe_median(right, 15.0f),
-                .front_left  = safe_median(front_left, 15.0f),   // ← NOVÉ
-                .front_right = safe_median(front_right, 15.0f),  // ← NOVÉ
+                .front = safe_median(front, 0.15f),
+                .back  = safe_median(back, 0.15f),
+                .left  = safe_median(left, 0.15f),
+                .right = safe_median(right, 0.15f),
+                .front_left  = safe_median(front_left, 0.15f),   // ← NOVÉ
+                .front_right = safe_median(front_right, 0.15f),  // ← NOVÉ
             };
         }
     };

@@ -6,7 +6,8 @@ namespace nodes {
 
 MazeLoopNode::MazeLoopNode(const rclcpp::NodeOptions& options)
     : Node("Maze_loop_node", options),
-      pid_controller_(10.0f, 0.2f, 2.0f)
+      pid_controller_(10.0f, 0.2f, 2.0f),
+      pid_controller_imu_(10.0f, 1.5f, 0.0f)
 {
     error_sub_ = this->create_subscription<std_msgs::msg::Float32>(
         "bpc_prp_robot/error_lidar", 10,
@@ -35,6 +36,9 @@ MazeLoopNode::MazeLoopNode(const rclcpp::NodeOptions& options)
         
     motor_pub_ = this->create_publisher<std_msgs::msg::UInt8MultiArray>(
         "bpc_prp_robot/motor_commands", 10);
+
+    imu_reset_pub_ = this->create_publisher<std_msgs::msg::Empty>(
+        "bpc_prp_robot/imu_reset", 10);
 
     last_callback_time_ = this->now();
     hole_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
@@ -71,6 +75,29 @@ void MazeLoopNode::publish_motor_command(uint8_t left, uint8_t right) {
     auto msg = std_msgs::msg::UInt8MultiArray();
     msg.data.push_back(left); msg.data.push_back(right);
     motor_pub_->publish(msg);
+}
+
+void MazeLoopNode::trigger_imu_reset() {
+    // Stop the motors immediately
+    publish_motor_command(127, 127);
+    
+    // Publish the reset trigger to the IMU node
+    auto msg = std_msgs::msg::Empty();
+    imu_reset_pub_->publish(msg);
+    RCLCPP_INFO(this->get_logger(), "Sent IMU reset command. Halting robot.");
+    
+    // Reset the Maze Loop state machine
+    current_state_ = State::CALIBRATION;
+    is_imu_ready_ = false; // Force it to wait for the new ready signal
+    
+    // Reset time trackers to prevent system/ROS time crashes
+    rclcpp::Time now = this->now();
+    last_callback_time_ = now;
+    hole_start_time_ = now;
+    detection_time_ = now;
+    exit_line_detect_time_ = now;
+    corridor_entry_time_ = now;
+    last_state_change_time_ = now;
 }
 
 void MazeLoopNode::control_loop_callback() {
@@ -143,6 +170,7 @@ void MazeLoopNode::control_loop_callback() {
                 right_opening = (current_right_dist_ > OPENING_THRESHOLD);
 
                 if (left_opening && right_opening) {
+                    detection_time_ = now;
                     current_state_ = State::INTERSECTION_STRAIGHT;
                     is_t_intersection_ = (current_front_distance_ < 0.5f);
                     return;
@@ -150,13 +178,13 @@ void MazeLoopNode::control_loop_callback() {
                 else if (left_opening) {
                     current_state_ = State::ONE_WALL_FOLLOWING;
                     following_left_wall_ = false; // sledujeme pravou, levá zmizela
-                    target_wall_distance_ = current_right_dist_;
+                    target_wall_distance_ = DESIRED_HALF_WIDTH;
                     return;
                 } 
                 else if (right_opening) {
                     current_state_ = State::ONE_WALL_FOLLOWING;
                     following_left_wall_ = true; // sledujeme levou, pravá zmizela
-                    target_wall_distance_ = current_left_dist_;
+                    target_wall_distance_ = DESIRED_HALF_WIDTH;
                     return;
                 }
             // }
@@ -179,19 +207,20 @@ void MazeLoopNode::control_loop_callback() {
 
         case State::ONE_WALL_FOLLOWING:
         {
-                     if (current_front_distance_ < 0.25f && 
-                    current_left_dist_ < 0.25f && 
-                    current_right_dist_ < 0.25f) {
-                    
-                    RCLCPP_INFO(this->get_logger(), "🚫 DEAD END → 180° turn");
-                    
-                    target_yaw_ = normalize_angle(current_yaw_ + static_cast<float>(M_PI));  // flip direction
-                    last_turn_direction_ = 1.0f;  // ľubovoľné, len pre log
-                    is_dead_end_turn_ = true;     // ← FLAG: toto je dead-end turn
-                    detection_time_ = now;
-                    current_state_ = State::TURNING;
-                    return;
-                }
+            if (current_front_distance_ < 0.25f && 
+                current_left_dist_ < 0.25f && 
+                current_right_dist_ < 0.25f) {
+                
+                RCLCPP_INFO(this->get_logger(), "🚫 DEAD END → 180° turn");
+                
+                target_yaw_ = normalize_angle(current_yaw_ + static_cast<float>(M_PI));  // flip direction
+                last_turn_direction_ = 1.0f;  // ľubovoľné, len pre log
+                is_dead_end_turn_ = true;     // ← FLAG: toto je dead-end turn
+                detection_time_ = now;
+                current_state_ = State::TURNING;
+                return;
+            }
+
             constexpr float CORRIDOR_RETURN_THRESH = 0.30f;
                 if (current_left_dist_ < CORRIDOR_RETURN_THRESH && current_right_dist_ < CORRIDOR_RETURN_THRESH && R_valid && L_valid) {
                 RCLCPP_INFO(this->get_logger(), "🔄 Both walls detected - resuming CORRIDOR_FOLLOWING");
@@ -203,6 +232,7 @@ void MazeLoopNode::control_loop_callback() {
             }
             // Kontrola, zda se z rohu nevyklubala křižovatka
             if (current_left_dist_ > OPENING_THRESHOLD && current_right_dist_ > OPENING_THRESHOLD) {
+                detection_time_ = now;
                 current_state_ = State::INTERSECTION_STRAIGHT;
                 is_t_intersection_ = (current_front_distance_ < 0.5f);
                 return;
@@ -215,7 +245,7 @@ void MazeLoopNode::control_loop_callback() {
             if (current_front_distance_ < TURN_DISTANCE) {
                 // Určení směru zatáčení podle toho, která stěna chybí
                 float turn_dir = following_left_wall_ ? -1.0f : 1.0f; 
-                target_yaw_ = normalize_angle(target_yaw_ + (turn_dir * M_PI / 2.0));
+                target_yaw_ = normalize_angle(target_yaw_ + (turn_dir * M_PI / 2.0f));
                 last_turn_direction_ = turn_dir;
                 final_correction = 0.0f; 
                 publish_motor_command(127, 127); 
@@ -224,8 +254,24 @@ void MazeLoopNode::control_loop_callback() {
                 return;
             }
 
-            final_correction = pid_controller_.step(one_wall_error, dt) + (normalize_angle(target_yaw_ - current_yaw_) * 0.5f);
+            final_correction = pid_controller_.step(one_wall_error, dt) + (normalize_angle(target_yaw_ - current_yaw_) * 0.8f);
 
+            L_valid = (current_left_dist_ > MIN_LIDAR_DIST);
+            R_valid = (current_right_dist_ > MIN_LIDAR_DIST);
+
+            if (should_log) {
+                RCLCPP_INFO(this->get_logger(), 
+                    "[FOLLOW] L:%.2f(%s) R:%.2f(%s) F:%.2f | FL:%.2f | FR:%.2f| Err:%.3f | ValidR:%d ValidL:%d",
+                    current_left_dist_, left_opening ? "V" : "X",
+                    current_right_dist_, right_opening ? "V" : "X",
+                    current_fl_dist_, current_fr_dist_,
+                    current_front_distance_, final_correction, R_valid, L_valid);
+            }
+        }
+        break;
+
+        case State::INTERSECTION_STRAIGHT:
+        {
             if (should_log) {
                 RCLCPP_INFO(this->get_logger(), 
                     "[FOLLOW] L:%.2f(%s) R:%.2f(%s) F:%.2f | FL:%.2f | FR:%.2f| Err:%.3f",
@@ -234,18 +280,28 @@ void MazeLoopNode::control_loop_callback() {
                     current_fl_dist_, current_fr_dist_,
                     current_front_distance_, final_correction);
             }
-        }
-        break;
+            if (!exit_line_seen_ && is_line_detected_) {
+                exit_line_seen_ = true;
+                exit_line_detect_time_ = now;
+                RCLCPP_INFO(this->get_logger(), "Line detected in INTERSECTION!");
+            }
 
-        case State::INTERSECTION_STRAIGHT:
-        {
+            if (exit_line_seen_ && (now - exit_line_detect_time_).seconds() > 1.0) {
+                RCLCPP_INFO(this->get_logger(), "Stable after line. Resuming Following.");
+                pid_controller_.reset();
+                target_yaw_ = current_yaw_; 
+                current_state_ = State::CORRIDOR_FOLLOWING;
+                exit_line_seen_ = false; // Reset pre budúcu križovatku
+                return;
+            }
+
             float yaw_error = normalize_angle(target_yaw_ - current_yaw_);
             final_correction = yaw_error * 4.5; // Čistě IMU řízení přes křižovatku
 
             if (is_t_intersection_ && current_front_distance_ < TURN_DISTANCE) {
                 // T-křižovatka: vyber volnou cestu
                 last_turn_direction_ = (current_right_dist_ > OPENING_THRESHOLD) ? -1.0f : 1.0f;
-                target_yaw_ = normalize_angle(target_yaw_ + (last_turn_direction_ * M_PI / 2.0));
+                target_yaw_ = normalize_angle(target_yaw_ - (last_turn_direction_ * M_PI / 2.0f));
                 detection_time_ = now;
                 current_state_ = State::TURNING;
                 return;
@@ -270,17 +326,21 @@ void MazeLoopNode::control_loop_callback() {
         case State::TURNING:
        {
             float yaw_err = normalize_angle(target_yaw_ - current_yaw_);
-            float corr = std::clamp(yaw_err * K_TURN_P, -TURN_MAX_PWM, TURN_MAX_PWM);
+
+            float corr = pid_controller_imu_.step(yaw_err, dt);
             publish_motor_command(
                 static_cast<uint8_t>(std::clamp(127.0f - corr, 0.0f, 255.0f)),
                 static_cast<uint8_t>(std::clamp(127.0f + corr, 0.0f, 255.0f))
             );
+
 
             if (std::abs(yaw_err) < YAW_PRECISION) {
                 publish_motor_command(127, 127);
                 current_state_ = State::EXIT_CORNER;
                 detection_time_ = now; // Reset time for exit logic
                 target_yaw_ = current_yaw_;
+                is_dead_end_turn_ = false; // Reset flagu pro další zatáčku
+                trigger_imu_reset();
                 RCLCPP_INFO(this->get_logger(), "Turn complete. Exiting.");
                 return;
             }
@@ -294,7 +354,7 @@ break;
         
         case State::EXIT_CORNER:
         {
-    
+            
             // Reset flagu pri prvom vstupe (alebo ho resetuj v TURNING)
             // Lepšie: Resetuj ho v DRIVE_TO_CENTER alebo na začiatku EXIT ak je time 0
             
@@ -337,15 +397,16 @@ break;
     }
        
  
-    
-    // --- Výpočet PWM (inspirováno _better pro hladší chod) ---
-    final_correction = std::clamp(final_correction, -max_correction_, max_correction_);
-    
-    uint8_t l_speed = static_cast<uint8_t>(std::clamp(base_speed_ - final_correction, 0.0f, 255.0f));
-    uint8_t r_speed = static_cast<uint8_t>(std::clamp(base_speed_ + final_correction, 0.0f, 255.0f));
-    
-    publish_motor_command(l_speed, r_speed);
-    // --- GLOBAL STATE LOG ---
+    if (current_state_ != State::TURNING || current_state_ == State::EXIT_CORNER) {
+        // --- Výpočet PWM (inspirováno _better pro hladší chod) ---
+        final_correction = std::clamp(final_correction, -max_correction_, max_correction_);
+        
+        uint8_t l_speed = static_cast<uint8_t>(std::clamp(base_speed_ - final_correction, 0.0f, 255.0f));
+        uint8_t r_speed = static_cast<uint8_t>(std::clamp(base_speed_ + final_correction, 0.0f, 255.0f));
+        
+        publish_motor_command(l_speed, r_speed);
+        // --- GLOBAL STATE LOG ---
+    }
     if (should_log) {
         std::string state_str = "UNKNOWN";
         switch (current_state_) {
