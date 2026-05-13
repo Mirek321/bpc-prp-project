@@ -6,9 +6,12 @@ namespace nodes {
 
 MazeLoopNode::MazeLoopNode(const rclcpp::NodeOptions& options)
     : Node("Maze_loop_node", options),
-      pid_controller_(10.0f, 0.2f, 2.0f),
+      pid_controller_(15.0f, 0.2f, 2.0f),
       pid_controller_imu_(10.0f, 1.5f, 0.0f)
 {
+    running_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+        "bpc_prp_robot/is_running", 10,
+        std::bind(&MazeLoopNode::running_callback, this, std::placeholders::_1));
     error_sub_ = this->create_subscription<std_msgs::msg::Float32>(
         "bpc_prp_robot/error_lidar", 10,
         std::bind(&MazeLoopNode::error_callback, this, std::placeholders::_1));
@@ -77,6 +80,10 @@ void MazeLoopNode::publish_motor_command(uint8_t left, uint8_t right) {
     motor_pub_->publish(msg);
 }
 
+void MazeLoopNode::running_callback(const std_msgs::msg::Bool::SharedPtr msg) {
+    is_running_enabled_ = msg->data;
+}
+
 void MazeLoopNode::trigger_imu_reset() {
     // Stop the motors immediately
     publish_motor_command(127, 127);
@@ -101,6 +108,11 @@ void MazeLoopNode::trigger_imu_reset() {
 }
 
 void MazeLoopNode::control_loop_callback() {
+    if (!is_running_enabled_) {
+        publish_motor_command(127, 127); // Stop motors if not running
+        return;
+    }
+
     rclcpp::Time now = this->now();
     double dt = (now - last_callback_time_).seconds();
     if (dt <= 0.0 || dt > 0.1) dt = 0.02;
@@ -328,8 +340,8 @@ void MazeLoopNode::control_loop_callback() {
        {
             float yaw_err = normalize_angle(target_yaw_ - current_yaw_);
 
-            float corr = pid_controller_imu_.step(yaw_err, dt);
-            publish_motor_command(
+            float corr = std::clamp(pid_controller_imu_.step(yaw_err, dt), -TURN_MAX_PWM, TURN_MAX_PWM);            
+                publish_motor_command(
                 static_cast<uint8_t>(std::clamp(127.0f - corr, 0.0f, 255.0f)),
                 static_cast<uint8_t>(std::clamp(127.0f + corr, 0.0f, 255.0f))
             );
@@ -341,7 +353,7 @@ void MazeLoopNode::control_loop_callback() {
                 detection_time_ = now; // Reset time for exit logic
                 target_yaw_ = current_yaw_;
                 is_dead_end_turn_ = false; // Reset flagu pro další zatáčku
-                trigger_imu_reset();
+                //trigger_imu_reset();
                 RCLCPP_INFO(this->get_logger(), "Turn complete. Exiting.");
                 return;
             }
@@ -397,7 +409,6 @@ break;
         default: break;
     }
        
- 
     if (current_state_ != State::TURNING && current_state_ != State::EXIT_CORNER && current_state_ != State::CALIBRATION) {
         // --- Výpočet PWM (inspirováno _better pro hladší chod) ---
         final_correction = std::clamp(final_correction, -max_correction_, max_correction_);

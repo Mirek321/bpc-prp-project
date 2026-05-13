@@ -18,6 +18,7 @@ int main(int argc, char* argv[]) {
     rclcpp::NodeOptions options;
     options.use_intra_process_comms(true);
 
+    auto io_node = std::make_shared<nodes::IoNode>(options);
     auto motor_node = std::make_shared<nodes::MotorNode>(options);
     auto line_node = std::make_shared<nodes::LineNode>(options);
     // auto loop_line_node = std::make_shared<nodes::LineLoopNode>(options);
@@ -27,6 +28,7 @@ int main(int argc, char* argv[]) {
     auto camera_node = std::make_shared<nodes::CameraNode>(options);
     auto imu_node = std::make_shared<nodes::ImuNode>(options);
 
+    auto io_executor = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
     auto motor_executor = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
     auto line_executor = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
     // auto loop_executor = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
@@ -36,6 +38,7 @@ int main(int argc, char* argv[]) {
     auto maze_loop_executor = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
     auto imu_executor = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
 
+    io_executor->add_node(io_node);
     motor_executor->add_node(motor_node);
     line_executor->add_node(line_node);
     // loop_executor->add_node(loop_line_node);
@@ -51,6 +54,10 @@ int main(int argc, char* argv[]) {
     
     threads.emplace_back([motor_executor](){
         motor_executor->spin();
+    });
+
+    threads.emplace_back([io_executor](){
+        io_executor->spin();
     });
 
     threads.emplace_back([line_executor](){

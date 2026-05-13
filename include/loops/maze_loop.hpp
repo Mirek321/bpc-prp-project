@@ -25,6 +25,7 @@ private:
     rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr yaw_sub_;
     rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr side_dist_sub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr imu_ready_sub_;
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr running_sub_;
     rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr imu_reset_pub_;
     rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr motor_pub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr line_detected_sub_;
@@ -81,6 +82,7 @@ private:
     const float OPENING_THRESHOLD = 0.35f;
     const float TURN_DISTANCE = 0.25f;
     bool is_dead_end_turn_ = false;
+    bool is_running_enabled_ = false;
 
 
     // --- Callbacks ---
@@ -90,6 +92,7 @@ private:
     float filtered_error_ = 0.0f;
 
     // Callbacks & Helpers
+    void running_callback(const std_msgs::msg::Bool::SharedPtr msg);
     void trigger_imu_reset();
     void control_loop_callback();
     void error_callback(const std_msgs::msg::Float32::SharedPtr msg);
