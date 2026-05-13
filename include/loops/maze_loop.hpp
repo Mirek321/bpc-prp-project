@@ -7,6 +7,7 @@
 #include <std_msgs/msg/int16_multi_array.hpp> 
 #include <std_msgs/msg/bool.hpp> 
 #include "algorithms/pid.hpp"
+#include <queue>
 #include <std_msgs/msg/empty.hpp>
 
 namespace nodes {
@@ -56,7 +57,7 @@ private:
     const float base_speed_ = 140.0f;
     const float max_correction_ = 80.0f;
     const float STOP_DISTANCE = 0.15f;
-    const float YAW_PRECISION = 0.05f;
+    const float YAW_PRECISION = 0.03f;
     const float YAW_DEADBAND = 0.03f;
     const float ERROR_DEADBAND = 0.02f;
     const float ERROR_ALPHA = 0.2f;
@@ -71,7 +72,11 @@ private:
     bool exit_line_seen_ = false;
     rclcpp::Time exit_line_detect_time_;
     int16_t last_aruco_id_ = -1;   // -1 means no marker
-
+    bool aruco_processing_ = false;
+    std::queue<int> aruco_queue_;
+    int active_aruco_id_ = -1;
+    bool aruco_locked_ = false;
+    int exit_line_count_ = 0;
 
     float target_wall_distance_ = 0.0f;
     bool following_left_wall_ = true;
@@ -82,7 +87,7 @@ private:
     bool L_valid = true;
     bool R_valid = true;
 
-    const float OPENING_THRESHOLD = 0.35f;
+    const float OPENING_THRESHOLD = 0.40;
     const float TURN_DISTANCE = 0.25f;
     bool is_dead_end_turn_ = false;
 

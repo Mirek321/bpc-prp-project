@@ -6,7 +6,7 @@ namespace nodes {
 
 MazeLoopNode::MazeLoopNode(const rclcpp::NodeOptions& options)
     : Node("Maze_loop_node", options),
-      pid_controller_(15.0f, 0.2f, 2.0f),
+      pid_controller_(15.0f, 0.5f, 2.0f),
       pid_controller_imu_(10.0f, 2.5f, 0.8f)
 {
     error_sub_ = this->create_subscription<std_msgs::msg::Float32>(
@@ -69,14 +69,39 @@ void MazeLoopNode::imu_ready_callback(const std_msgs::msg::Bool::SharedPtr msg) 
 void MazeLoopNode::line_detected_callback(const std_msgs::msg::Bool::SharedPtr msg) {
     is_line_detected_ = msg->data;
 }
+void printQueue(std::queue<int> q)
+{
+    std::cout << "Queue: ";
 
+    while (!q.empty()) {
+        std::cout << q.front() << " ";
+        q.pop();
+    }
+
+    std::cout << std::endl;
+}
 void MazeLoopNode::aruco_callback(const std_msgs::msg::Int16MultiArray::SharedPtr msg)
 {
-    if (!msg->data.empty()) {
-        // Take the first detected marker (assuming only one per intersection)
-        last_aruco_id_ = msg->data[0];
-        RCLCPP_INFO(this->get_logger(), "ArUco detected: %d", last_aruco_id_);
-    } 
+     if (msg->data.empty()) {
+        return;
+    }
+
+    int detected_id = msg->data[0];
+
+    if (detected_id < 0 || detected_id > 2) {
+        return;
+    }
+    if (!aruco_queue_.empty() && aruco_queue_.back() == detected_id) {
+        return;
+    }
+    if (active_aruco_id_ == detected_id) {
+        return;
+    }
+    aruco_queue_.push(detected_id);
+
+    RCLCPP_INFO(this->get_logger(),
+        "Queued ArUco: %d", detected_id);
+    printQueue(aruco_queue_);
 }
 
 float MazeLoopNode::normalize_angle(float angle) const {
@@ -152,6 +177,20 @@ void MazeLoopNode::control_loop_callback() {
             // Tvoje logika detekce křižovatek a rohů
             // if ((now - corridor_entry_time_).seconds() > 1.5f) {
 
+                  
+                    //  RCLCPP_INFO(this->get_logger(), "Aruco locked %d Active aruco id %d Aruco is empty %d", aruco_locked_, active_aruco_id_, aruco_queue_.empty());
+            // if (!aruco_locked_ && active_aruco_id_ == -1 && !aruco_queue_.empty()) {
+            //         active_aruco_id_ = aruco_queue_.front();
+            //         aruco_queue_.pop();
+
+            //         aruco_locked_ = true;
+
+            //         RCLCPP_INFO(this->get_logger(),
+            //             "Activated ArUco: %d Corridor following queue:",
+            //             active_aruco_id_);
+            //         printQueue(aruco_queue_);
+            //     }
+
              if (current_front_distance_ < 0.25f && 
                     current_left_dist_ < 0.25f && 
                     current_right_dist_ < 0.25f) {
@@ -170,12 +209,14 @@ void MazeLoopNode::control_loop_callback() {
                 R_valid = (current_right_dist_ > MIN_LIDAR_DIST);
 
                 if (!L_valid) {
+                    pid_controller_.reset();
                     current_state_ = State::ONE_WALL_FOLLOWING;
                     following_left_wall_ = false; // sledujeme pravou, levá zmizela
                     target_wall_distance_ = DESIRED_HALF_WIDTH;
                     return;
                 } 
                 else if (!R_valid) {
+                    pid_controller_.reset();
                     current_state_ = State::ONE_WALL_FOLLOWING;
                     following_left_wall_ = true; // sledujeme levou, pravá zmizela
                     target_wall_distance_ = DESIRED_HALF_WIDTH;
@@ -222,6 +263,9 @@ void MazeLoopNode::control_loop_callback() {
 
         case State::ONE_WALL_FOLLOWING:
         {
+            L_valid = (current_left_dist_ > MIN_LIDAR_DIST);
+            R_valid = (current_right_dist_ > MIN_LIDAR_DIST);
+   
             if (current_front_distance_ < 0.25f && 
                 current_left_dist_ < 0.25f && 
                 current_right_dist_ < 0.25f) {
@@ -241,10 +285,56 @@ void MazeLoopNode::control_loop_callback() {
                 RCLCPP_INFO(this->get_logger(), "🔄 Both walls detected - resuming CORRIDOR_FOLLOWING");
                 corridor_entry_time_ = now;
                 target_yaw_ = current_yaw_;       // Lock current heading
-                pid_controller_.reset();          // Clear wall-following integral (bpc-prp-6-pid)
+                // pid_controller_.reset();          // Clear wall-following integral (bpc-prp-6-pid)
+                //    aruco_locked_ = false;
+        // active_aruco_id_ = -1;
                 current_state_ = State::CORRIDOR_FOLLOWING;
                 return; // Skip rest of loop this cycle
             }
+            // if (!exit_line_seen_ && is_line_detected_) {
+            //     exit_line_detect_time_ = now;
+            //     exit_line_seen_ = true;
+            //     exit_line_count_++;   // <-- count each detection
+            //     RCLCPP_INFO(this->get_logger(), "Line detected in INTERSECTION (%d/2)", exit_line_count_);
+            // }
+
+            // if (exit_line_seen_ && (now - exit_line_detect_time_).seconds() > 1.0) {
+            //     if (exit_line_count_ >= 2) {
+            //         RCLCPP_INFO(this->get_logger(), 
+            //             "Stable after line. 2 detections reached. Unlocking aruco locked");
+            //         exit_line_seen_ = false;
+            //         aruco_locked_ = false;
+            //         active_aruco_id_ = -1;
+            //         exit_line_count_ = 0;   // <-- reset counter for next cycle
+            //         return;
+            //     }
+            //     // Only 1 detection so far; reset the seen flag so we can catch the next one
+            //     exit_line_seen_ = false;
+            // }
+                if (!exit_line_seen_  && is_line_detected_) {
+        exit_line_seen_ = true;
+        exit_line_detect_time_ = now;
+        RCLCPP_INFO(this->get_logger(), "Line detected in INTERSECTION");
+    }
+
+    if (exit_line_seen_ && (now - exit_line_detect_time_).seconds() > 1.0) {
+        RCLCPP_INFO(this->get_logger(), "Stable after line. Unlocking aruco locked");
+         exit_line_seen_ = false;
+        aruco_locked_ = false;
+        // active_aruco_id_ = -1;
+        return;
+    }
+            RCLCPP_INFO(this->get_logger(), "Aruco locked %d Active aruco id %d Aruco is empty %d", aruco_locked_, active_aruco_id_, aruco_queue_.empty());
+            if (!aruco_locked_ && active_aruco_id_ == -1 &&  !aruco_queue_.empty()) {
+                    active_aruco_id_ = aruco_queue_.front();
+                    aruco_queue_.pop();
+
+                    aruco_locked_ = true;
+                    printQueue(aruco_queue_);
+                    RCLCPP_INFO(this->get_logger(),
+                        "Activated ArUco: %d",
+                        active_aruco_id_);
+                }
             // Kontrola, zda se z rohu nevyklubala křižovatka
             if (current_left_dist_ > OPENING_THRESHOLD && current_right_dist_ > OPENING_THRESHOLD) {
                 detection_time_ = now;
@@ -256,6 +346,31 @@ void MazeLoopNode::control_loop_callback() {
             float one_wall_error = following_left_wall_ ? 
                                    (current_left_dist_ - target_wall_distance_) : 
                                    (target_wall_distance_ - current_right_dist_);
+
+            if (active_aruco_id_ == 1 && !following_left_wall_) {
+                RCLCPP_INFO(this->get_logger(), "ArUco 1 → TURN LEFT");
+                // Turn left: -90° from current heading
+                target_yaw_ = normalize_angle(current_yaw_ + static_cast<float>(M_PI) / 2.0f);
+                last_turn_direction_ = 1.0f;
+                detection_time_ = now;
+                active_aruco_id_ = -1;   // consume the marker
+                current_state_ = State::DRIVE_TO_CENTER;
+                return;
+            }
+
+            else if (active_aruco_id_ == 2 && following_left_wall_) {
+                RCLCPP_INFO(this->get_logger(), "ArUco 2 → TURN RIGHT");
+                // Turn right: +90° from current heading
+                target_yaw_ = normalize_angle(current_yaw_ - static_cast<float>(M_PI) / 2.0f);
+                last_turn_direction_ = -1.0f;
+                detection_time_ = now;
+                active_aruco_id_ = -1;   // consume the marker
+                current_state_ = State::DRIVE_TO_CENTER;
+                return;
+            }
+        // if(is_line_detected_){
+           
+        // }
 
             if (current_front_distance_ < TURN_DISTANCE) {
                 // Určení směru zatáčení podle toho, která stěna chybí
@@ -271,8 +386,7 @@ void MazeLoopNode::control_loop_callback() {
 
             final_correction = pid_controller_.step(one_wall_error, dt) + (normalize_angle(target_yaw_ - current_yaw_) * 0.8f);
 
-            L_valid = (current_left_dist_ > MIN_LIDAR_DIST);
-            R_valid = (current_right_dist_ > MIN_LIDAR_DIST);
+
 
             if (should_log) {
                 RCLCPP_INFO(this->get_logger(), 
@@ -284,51 +398,69 @@ void MazeLoopNode::control_loop_callback() {
             }
         }
         break;
-
+    case State::DRIVE_TO_CENTER:
+            if ((now - detection_time_).seconds() > 1.0f) {
+                current_state_ = State::TURNING;
+                RCLCPP_INFO(this->get_logger(), "Target yaw: %.3f rad", target_yaw_);
+                return;
+            }
+    break;
       case State::INTERSECTION_STRAIGHT:
 {
+
+        //    if (!aruco_locked_ && active_aruco_id_ == -1 && !aruco_queue_.empty()) {
+        //             active_aruco_id_ = aruco_queue_.front();
+        //             aruco_queue_.pop();
+
+        //             aruco_locked_ = true;
+
+        //             RCLCPP_INFO(this->get_logger(),
+        //                 "Activated ArUco: %d",
+        //                 active_aruco_id_);
+        //         }
     if (should_log) {
         RCLCPP_INFO(this->get_logger(), 
             "[INTERSECTION] L:%.2f R:%.2f F:%.2f | ArUco: %d",
             current_left_dist_, current_right_dist_, current_front_distance_,
-            last_aruco_id_);
+            active_aruco_id_);
     }
     float yaw_error = normalize_angle(target_yaw_ - current_yaw_);
     float final_correction = yaw_error * 4.5f;  // pure IMU control
 
     // T‑junction fallback (only if no ArUco was used)
     if (is_t_intersection_ && current_front_distance_ < TURN_DISTANCE) {
-            if (last_aruco_id_ >= 0) {
-        if (last_aruco_id_ == 0) {
+            if (active_aruco_id_ >= 0) {
+        if (active_aruco_id_ == 0) {
             RCLCPP_INFO(this->get_logger(), "ArUco 0 → GO STRAIGHT through intersection");
             // Mark this intersection as "handled" and continue straight.
             // We still need to cross the line and exit normally.
-            last_aruco_id_ = -1;   // consume the marker
+            // active_aruco_id_ = -1;   // consume the marker
             // Do not change state, let the straight crossing logic below handle it.
         }
-        else if (last_aruco_id_ == 1) {
+        else if (active_aruco_id_ == 1) {
             RCLCPP_INFO(this->get_logger(), "ArUco 1 → TURN LEFT");
             // Turn left: -90° from current heading
             target_yaw_ = normalize_angle(current_yaw_ + static_cast<float>(M_PI) / 2.0f);
             last_turn_direction_ = -1.0f;
             detection_time_ = now;
-            last_aruco_id_ = -1;   // consume the marker
+            active_aruco_id_ = -1;   // consume the marker
             current_state_ = State::TURNING;
             return;
         }
-        else if (last_aruco_id_ == 2) {
+        else if (active_aruco_id_ == 2) {
             RCLCPP_INFO(this->get_logger(), "ArUco 2 → TURN RIGHT");
             // Turn right: +90° from current heading
             target_yaw_ = normalize_angle(current_yaw_ + static_cast<float>(M_PI) / 2.0f);
             last_turn_direction_ = +1.0f;
             detection_time_ = now;
-            last_aruco_id_ = -1;   // consume the marker
+            active_aruco_id_ = -1;   // consume the marker
             current_state_ = State::TURNING;
             return;
         }
            }else{
         // No ArUco, default decision: turn into the open side
-        last_turn_direction_ = (current_right_dist_ > OPENING_THRESHOLD) ? -1.0f : 1.0f;
+         RCLCPP_INFO(this->get_logger(), "ArUco TURN WITHOUT ARUCO");
+        last_turn_direction_ = (current_right_dist_ > OPENING_THRESHOLD) ? 1.0f : -1.0f;
         target_yaw_ = normalize_angle(target_yaw_ - (last_turn_direction_ * M_PI / 2.0f));
         detection_time_ = now;
         current_state_ = State::TURNING;
@@ -367,7 +499,7 @@ break;
        {
             float yaw_err = normalize_angle(target_yaw_ - current_yaw_);
 
-            float corr = pid_controller_imu_.step(yaw_err, dt);
+            float corr = std::clamp(pid_controller_imu_.step(yaw_err, dt), -TURN_MAX_PWM, TURN_MAX_PWM);
             publish_motor_command(
                 static_cast<uint8_t>(std::clamp(127.0f - corr, 0.0f, 255.0f)),
                 static_cast<uint8_t>(std::clamp(127.0f + corr, 0.0f, 255.0f))
@@ -382,6 +514,7 @@ break;
                 target_yaw_ = current_yaw_;
                 is_dead_end_turn_ = false; // Reset flagu pro další zatáčku
                 // trigger_imu_reset();
+                pid_controller_imu_.reset();
               
                 return;
             }
@@ -414,12 +547,15 @@ break;
                 RCLCPP_INFO(this->get_logger(), "Line detected in EXIT!");
             }
 
-            if (exit_line_seen_ && (now - exit_line_detect_time_).seconds() > 1.0) {
+            if (exit_line_seen_ && (now - exit_line_detect_time_).seconds() > 1.2) {
                 RCLCPP_INFO(this->get_logger(), "Stable after line. Resuming Following.");
                 pid_controller_.reset();
                 target_yaw_ = current_yaw_; 
-                current_state_ = State::CORRIDOR_FOLLOWING;
+                current_state_ = State::ONE_WALL_FOLLOWING;
                 exit_line_seen_ = false; // Reset pre budúcu križovatku
+                // active_aruco_id_ = -1;   // <--- PRIDAJ
+                // aruco_locked_ = false;    // <--- PRIDAJ pre istotu
+
                 return;
             }
 
@@ -454,6 +590,7 @@ break;
             case State::CALIBRATION:       state_str = "CALIBRATION"; break;
             case State::CORRIDOR_FOLLOWING: state_str = "FOLLOWING"; break;
             case State::ONE_WALL_FOLLOWING: state_str = "ONE WALL"; break;
+            case State::DRIVE_TO_CENTER:    state_str = "CENTER";  break;
             case State::INTERSECTION_STRAIGHT: state_str = "INTERSECTION"; break;
             case State::TURNING:           state_str = "TURNING"; break;
             case State::EXIT_CORNER:       state_str = "EXIT"; break;
