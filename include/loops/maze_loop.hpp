@@ -4,6 +4,7 @@
 #include <std_msgs/msg/float32_multi_array.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/u_int8_multi_array.hpp>
+#include <std_msgs/msg/int16_multi_array.hpp> 
 #include <std_msgs/msg/bool.hpp> 
 #include "algorithms/pid.hpp"
 #include <std_msgs/msg/empty.hpp>
@@ -28,6 +29,7 @@ private:
     rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr imu_reset_pub_;
     rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr motor_pub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr line_detected_sub_;
+    rclcpp::Subscription<std_msgs::msg::Int16MultiArray>::SharedPtr aruco_sub_;
     rclcpp::TimerBase::SharedPtr control_timer_;
     algorithms::Pid pid_controller_;
     algorithms::Pid pid_controller_imu_;
@@ -68,6 +70,8 @@ private:
     bool is_line_detected_ = false; // Premenná na uloženie stavu (true/false)
     bool exit_line_seen_ = false;
     rclcpp::Time exit_line_detect_time_;
+    int16_t last_aruco_id_ = -1;   // -1 means no marker
+
 
     float target_wall_distance_ = 0.0f;
     bool following_left_wall_ = true;
@@ -95,6 +99,7 @@ private:
     void error_callback(const std_msgs::msg::Float32::SharedPtr msg);
     void front_dist_callback(const std_msgs::msg::Float32::SharedPtr msg);
     void side_dist_callback(const std_msgs::msg::Float32MultiArray::SharedPtr msg);
+    void aruco_callback(const std_msgs::msg::Int16MultiArray::SharedPtr msg);
     void yaw_callback(const std_msgs::msg::Float32::SharedPtr msg);
     void imu_ready_callback(const std_msgs::msg::Bool::SharedPtr msg);
     void line_detected_callback(const std_msgs::msg::Bool::SharedPtr msg);
