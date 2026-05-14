@@ -4,8 +4,10 @@
 #include <std_msgs/msg/float32_multi_array.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/u_int8_multi_array.hpp>
+#include <std_msgs/msg/int16_multi_array.hpp> 
 #include <std_msgs/msg/bool.hpp> 
 #include "algorithms/pid.hpp"
+#include <queue>
 #include <std_msgs/msg/empty.hpp>
 
 namespace nodes {
@@ -29,6 +31,7 @@ private:
     rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr imu_reset_pub_;
     rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr motor_pub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr line_detected_sub_;
+    rclcpp::Subscription<std_msgs::msg::Int16MultiArray>::SharedPtr aruco_sub_;
     rclcpp::TimerBase::SharedPtr control_timer_;
     algorithms::Pid pid_controller_;
     algorithms::Pid pid_controller_imu_;
@@ -55,20 +58,26 @@ private:
     const float base_speed_ = 140.0f;
     const float max_correction_ = 80.0f;
     const float STOP_DISTANCE = 0.15f;
-    const float YAW_PRECISION = 0.05f;
+    const float YAW_PRECISION = 0.03f;
     const float YAW_DEADBAND = 0.03f;
     const float ERROR_DEADBAND = 0.02f;
     const float ERROR_ALPHA = 0.2f;
     const float YAW_P_GAIN = 3.5f;
     const float K_TURN_P = 10.0f;
     const float TURN_MAX_PWM = 15.0f;
-    const float OPEN_DIST = 0.40f;       // >40cm = otvorený priestor
-    const float MIN_LIDAR_DIST = 0.16f;  // Slepá zóna LiDARu
+    const float OPEN_DIST = 0.40f;
+    const float MIN_LIDAR_DIST = 0.16f;
     const float DESIRED_HALF_WIDTH = 0.20f;
     const float EXIT_WALL_THRESHOLD = 1.8f;
-    bool is_line_detected_ = false; // Premenná na uloženie stavu (true/false)
+    bool is_line_detected_ = false;
     bool exit_line_seen_ = false;
     rclcpp::Time exit_line_detect_time_;
+    int16_t last_aruco_id_ = -1;
+    bool aruco_processing_ = false;
+    std::queue<int> aruco_queue_;
+    int active_aruco_id_ = -1;
+    bool aruco_locked_ = false;
+    int exit_line_count_ = 0;
 
     float target_wall_distance_ = 0.0f;
     bool following_left_wall_ = true;
@@ -79,7 +88,7 @@ private:
     bool L_valid = true;
     bool R_valid = true;
 
-    const float OPENING_THRESHOLD = 0.45f;
+    const float OPENING_THRESHOLD = 0.45;
     const float TURN_DISTANCE = 0.25f;
     bool is_dead_end_turn_ = false;
     bool is_running_enabled_ = false;
@@ -93,11 +102,13 @@ private:
 
     // Callbacks & Helpers
     void running_callback(const std_msgs::msg::Bool::SharedPtr msg);
+    void try_activate_next_aruco();
     void trigger_imu_reset();
     void control_loop_callback();
     void error_callback(const std_msgs::msg::Float32::SharedPtr msg);
     void front_dist_callback(const std_msgs::msg::Float32::SharedPtr msg);
     void side_dist_callback(const std_msgs::msg::Float32MultiArray::SharedPtr msg);
+    void aruco_callback(const std_msgs::msg::Int16MultiArray::SharedPtr msg);
     void yaw_callback(const std_msgs::msg::Float32::SharedPtr msg);
     void imu_ready_callback(const std_msgs::msg::Bool::SharedPtr msg);
     void line_detected_callback(const std_msgs::msg::Bool::SharedPtr msg);

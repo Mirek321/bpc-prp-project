@@ -27,7 +27,7 @@ private:
     bool is_calibrated_ = false;
     
     std::vector<float> calibration_samples_;
-    const size_t MAX_CALIBRATION_SAMPLES = 100;
+    const size_t MAX_CALIBRATION_SAMPLES = 500;
     rclcpp::Time last_update_time_;
 
     void imu_callback(const sensor_msgs::msg::Imu::SharedPtr msg);
