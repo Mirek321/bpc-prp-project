@@ -50,7 +50,7 @@ Before running this project, ensure you have:
     colcon build
     ```
 
-## 📖 Usage
+## Usage
 
 1.  **Source the Workspace**:
     ```bash
