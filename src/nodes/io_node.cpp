@@ -13,7 +13,6 @@ IoNode::IoNode()
         10,
         std::bind(&IoNode::on_button_callback, this, _1)
     );
-    // publisher_ = node_->create_publisher<std_msgs::msg::Float32>(topic, 1);
 }
 
 void IoNode::on_button_callback(const std_msgs::msg::UInt8::SharedPtr msg)

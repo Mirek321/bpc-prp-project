@@ -64,14 +64,14 @@ private:
     const float YAW_P_GAIN = 3.5f;
     const float K_TURN_P = 10.0f;
     const float TURN_MAX_PWM = 15.0f;
-    const float OPEN_DIST = 0.40f;       // >40cm = otvorený priestor
-    const float MIN_LIDAR_DIST = 0.16f;  // Slepá zóna LiDARu
+    const float OPEN_DIST = 0.40f;
+    const float MIN_LIDAR_DIST = 0.16f;
     const float DESIRED_HALF_WIDTH = 0.20f;
     const float EXIT_WALL_THRESHOLD = 1.8f;
-    bool is_line_detected_ = false; // Premenná na uloženie stavu (true/false)
+    bool is_line_detected_ = false;
     bool exit_line_seen_ = false;
     rclcpp::Time exit_line_detect_time_;
-    int16_t last_aruco_id_ = -1;   // -1 means no marker
+    int16_t last_aruco_id_ = -1;
     bool aruco_processing_ = false;
     std::queue<int> aruco_queue_;
     int active_aruco_id_ = -1;
