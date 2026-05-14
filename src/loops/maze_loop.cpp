@@ -6,8 +6,8 @@ namespace nodes {
 
 MazeLoopNode::MazeLoopNode(const rclcpp::NodeOptions& options)
     : Node("Maze_loop_node", options),
-      pid_controller_(15.0f, 0.2f, 2.0f),
-      pid_controller_imu_(10.0f, 1.5f, 0.0f)
+      pid_controller_(15.0f, 0.5f, 2.0f),
+      pid_controller_imu_(10.0f, 1.5f, 2.0f)
 {
     running_sub_ = this->create_subscription<std_msgs::msg::Bool>(
         "bpc_prp_robot/is_running", 10,
@@ -313,7 +313,8 @@ void MazeLoopNode::control_loop_callback() {
 
             if (is_t_intersection_ && current_front_distance_ < TURN_DISTANCE) {
                 // T-křižovatka: vyber volnou cestu
-                last_turn_direction_ = (current_right_dist_ > OPENING_THRESHOLD) ? -1.0f : 1.0f;
+                RCLCPP_INFO(this->get_logger(), "T-Intersection detected! Choosing direction: R: %.2f | L: %.2f", current_right_dist_, current_left_dist_);
+                last_turn_direction_ = (current_right_dist_ > OPENING_THRESHOLD) ? 1.0f : -1.0f;
                 target_yaw_ = normalize_angle(target_yaw_ - (last_turn_direction_ * M_PI / 2.0f));
                 detection_time_ = now;
                 current_state_ = State::TURNING;
@@ -323,6 +324,21 @@ void MazeLoopNode::control_loop_callback() {
                 corridor_entry_time_ = now;
                 current_state_ = State::CORRIDOR_FOLLOWING;
             }
+
+            /*if (current_right_dist_ < OPENING_THRESHOLD || current_left_dist_ < OPENING_THRESHOLD) {
+                if (should_log) {
+                    RCLCPP_INFO(this->get_logger(), "🔄 Returning to ONE_WALL_FOLLOWING");
+                }
+                if (current_right_dist_ < OPENING_THRESHOLD) {
+                    following_left_wall_ = false;
+                    target_wall_distance_ = DESIRED_HALF_WIDTH;
+                } else {
+                    following_left_wall_ = true;
+                    target_wall_distance_ = DESIRED_HALF_WIDTH;
+                }
+                corridor_entry_time_ = now;
+                current_state_ = State::ONE_WALL_FOLLOWING;
+            }*/
             // else if((!is_t_intersection_ ) && 
             //         (now - corridor_entry_time_).seconds() > 2.0f) { // Počkaj 200ms na stabilizáciu
             // RCLCPP_INFO(this->get_logger(), "🔄 Forced right turn at intersection");
@@ -354,6 +370,7 @@ void MazeLoopNode::control_loop_callback() {
                 target_yaw_ = current_yaw_;
                 is_dead_end_turn_ = false; // Reset flagu pro další zatáčku
                 //trigger_imu_reset();
+                pid_controller_imu_.reset(); // Reset PID pro čistý start v další fázi
                 RCLCPP_INFO(this->get_logger(), "Turn complete. Exiting.");
                 return;
             }
