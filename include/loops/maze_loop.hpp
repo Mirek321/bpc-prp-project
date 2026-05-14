@@ -66,7 +66,7 @@ private:
     const float TURN_MAX_PWM = 15.0f;
     const float OPEN_DIST = 0.40f;       // >40cm = otvorený priestor
     const float MIN_LIDAR_DIST = 0.16f;  // Slepá zóna LiDARu
-    const float DESIRED_HALF_WIDTH = 0.21f;
+    const float DESIRED_HALF_WIDTH = 0.20f;
     const float EXIT_WALL_THRESHOLD = 1.8f;
     bool is_line_detected_ = false; // Premenná na uloženie stavu (true/false)
     bool exit_line_seen_ = false;
@@ -87,7 +87,7 @@ private:
     bool L_valid = true;
     bool R_valid = true;
 
-    const float OPENING_THRESHOLD = 0.40;
+    const float OPENING_THRESHOLD = 0.45;
     const float TURN_DISTANCE = 0.25f;
     bool is_dead_end_turn_ = false;
 
