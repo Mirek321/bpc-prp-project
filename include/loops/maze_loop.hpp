@@ -99,6 +99,7 @@ private:
     float filtered_error_ = 0.0f;
 
     // Callbacks & Helpers
+    void try_activate_next_aruco();
     void trigger_imu_reset();
     void control_loop_callback();
     void error_callback(const std_msgs::msg::Float32::SharedPtr msg);

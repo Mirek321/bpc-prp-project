@@ -6,8 +6,8 @@ namespace nodes {
 
 MazeLoopNode::MazeLoopNode(const rclcpp::NodeOptions& options)
     : Node("Maze_loop_node", options),
-      pid_controller_(15.0f, 0.5f, 2.0f),
-      pid_controller_imu_(10.0f, 2.5f, 0.8f)
+      pid_controller_(12.5f, 0.5f, 2.0f),
+      pid_controller_imu_(10.0f, 2.5f, 2.0f)
 {
     error_sub_ = this->create_subscription<std_msgs::msg::Float32>(
         "bpc_prp_robot/error_lidar", 10,
@@ -141,6 +141,19 @@ void MazeLoopNode::trigger_imu_reset() {
     last_state_change_time_ = now;
 }
 
+void MazeLoopNode::try_activate_next_aruco() {
+    // Only pop if we don't currently have an active command and the queue isn't empty
+    if (!exit_line_seen_ && !aruco_queue_.empty() && (this->now() - exit_line_detect_time_).seconds() > 3.0) {
+        active_aruco_id_ = aruco_queue_.front();
+        aruco_queue_.pop();
+        aruco_locked_ = true;
+
+        RCLCPP_INFO(this->get_logger(),
+            "🚀 ArUco Triggered on Transition: ID %d", active_aruco_id_);
+        printQueue(aruco_queue_);
+    }
+}
+
 void MazeLoopNode::control_loop_callback() {
     rclcpp::Time now = this->now();
     double dt = (now - last_callback_time_).seconds();
@@ -180,7 +193,7 @@ void MazeLoopNode::control_loop_callback() {
             // if ((now - corridor_entry_time_).seconds() > 1.5f) {
 
             if(should_log)      
-            RCLCPP_INFO(this->get_logger(), "Aruco locked %d Active aruco id %d Aruco is empty %d", aruco_locked_, active_aruco_id_, aruco_queue_.empty());
+                RCLCPP_INFO(this->get_logger(), "Aruco locked %d Active aruco id %d Aruco is empty %d", aruco_locked_, active_aruco_id_, aruco_queue_.empty());
             if (!aruco_locked_ && active_aruco_id_ == -1 && !aruco_queue_.empty()) {
                     active_aruco_id_ = aruco_queue_.front();
                     aruco_queue_.pop();
@@ -215,6 +228,8 @@ void MazeLoopNode::control_loop_callback() {
                     current_state_ = State::ONE_WALL_FOLLOWING;
                     following_left_wall_ = false; // sledujeme pravou, levá zmizela
                     target_wall_distance_ = DESIRED_HALF_WIDTH;
+
+                    try_activate_next_aruco(); // Check if we can activate the next ArUco command for the upcoming ONE_WALL_FOLLOWING state
                     return;
                 } 
                 else if (!R_valid) {
@@ -222,6 +237,8 @@ void MazeLoopNode::control_loop_callback() {
                     current_state_ = State::ONE_WALL_FOLLOWING;
                     following_left_wall_ = true; // sledujeme levou, pravá zmizela
                     target_wall_distance_ = DESIRED_HALF_WIDTH;
+                    
+                    try_activate_next_aruco(); // Check if we can activate the next ArUco command for the upcoming ONE_WALL_FOLLOWING state
                     return;
                 }
                 left_opening = (current_left_dist_ > OPENING_THRESHOLD);
@@ -232,6 +249,7 @@ void MazeLoopNode::control_loop_callback() {
                     detection_time_ = now;
                     current_state_ = State::INTERSECTION_STRAIGHT;
                     is_t_intersection_ = (current_front_distance_ < 0.5f);
+                    try_activate_next_aruco();
                     return;
                 } 
                 else if (left_opening) {
@@ -239,6 +257,7 @@ void MazeLoopNode::control_loop_callback() {
                     current_state_ = State::ONE_WALL_FOLLOWING;
                     following_left_wall_ = false; // sledujeme pravou, levá zmizela
                     target_wall_distance_ = DESIRED_HALF_WIDTH;
+                    try_activate_next_aruco();
                     return;
                 } 
                 else if (right_opening) {
@@ -246,6 +265,7 @@ void MazeLoopNode::control_loop_callback() {
                     current_state_ = State::ONE_WALL_FOLLOWING;
                     following_left_wall_ = true; // sledujeme levou, pravá zmizela
                     target_wall_distance_ = DESIRED_HALF_WIDTH;
+                    try_activate_next_aruco();
                     return;
                 }
             // }
@@ -309,7 +329,7 @@ void MazeLoopNode::control_loop_callback() {
             //         RCLCPP_INFO(this->get_logger(), 
             //             "Stable after line. 2 detections reached. Unlocking aruco locked");
             //         exit_line_seen_ = false;
-            //         aruco_locked_ = false;
+            //         aruco_locked_ = false;camera
             //         active_aruco_id_ = -1;
             //         exit_line_count_ = 0;   // <-- reset counter for next cycle
             //         return;
@@ -347,6 +367,8 @@ void MazeLoopNode::control_loop_callback() {
                 detection_time_ = now;
                 current_state_ = State::INTERSECTION_STRAIGHT;
                 is_t_intersection_ = (current_front_distance_ < 0.5f);
+
+                try_activate_next_aruco(); // Check if we can activate the next ArUco command for the upcoming INTERSECTION_STRAIGHT state
                 return;
             }
             // "Umělá" chyba podle vzdálenosti od jedné stěny
@@ -460,7 +482,7 @@ void MazeLoopNode::control_loop_callback() {
         else if (active_aruco_id_ == 2) {
             RCLCPP_INFO(this->get_logger(), "ArUco 2 → TURN RIGHT");
             // Turn right: +90° from current heading
-            target_yaw_ = normalize_angle(current_yaw_ + static_cast<float>(M_PI) / 2.0f);
+            target_yaw_ = normalize_angle(current_yaw_ - static_cast<float>(M_PI) / 2.0f);
             last_turn_direction_ = +1.0f;
             detection_time_ = now;
             active_aruco_id_ = -1;   // consume the marker
@@ -525,7 +547,7 @@ break;
                 is_dead_end_turn_ = false; // Reset flagu pro další zatáčku
                 // trigger_imu_reset();
                 pid_controller_imu_.reset();
-              
+                
                 return;
             }
             
