@@ -6,8 +6,8 @@ namespace nodes {
 
 MazeLoopNode::MazeLoopNode(const rclcpp::NodeOptions& options)
     : Node("Maze_loop_node", options),
-      pid_controller_(12.5f, 0.5f, 2.0f),
-      pid_controller_imu_(10.0f, 2.5f, 2.0f)
+      pid_controller_(15.0f, 1.5f, 2.0f),
+      pid_controller_imu_(10.0f, 2.5f, 0.8f)
 {
     error_sub_ = this->create_subscription<std_msgs::msg::Float32>(
         "bpc_prp_robot/error_lidar", 10,
@@ -380,7 +380,7 @@ void MazeLoopNode::control_loop_callback() {
                 pid_controller_.reset(); 
                 RCLCPP_INFO(this->get_logger(), "ArUco 1 → TURN LEFT");
                 // Turn left: -90° from current heading
-                target_yaw_ = normalize_angle(current_yaw_ + static_cast<float>(M_PI) / 2.0f);
+                target_yaw_ = normalize_angle(current_yaw_ + static_cast<float>(M_PI) / 2.1f);
                 last_turn_direction_ = 1.0f;
                 detection_time_ = now;
                 active_aruco_id_ = -1;   // consume the marker
@@ -392,7 +392,7 @@ void MazeLoopNode::control_loop_callback() {
                 pid_controller_.reset(); 
                 RCLCPP_INFO(this->get_logger(), "ArUco 2 → TURN RIGHT");
                 // Turn right: +90° from current heading
-                target_yaw_ = normalize_angle(current_yaw_ - static_cast<float>(M_PI) / 2.0f);
+                target_yaw_ = normalize_angle(current_yaw_ - static_cast<float>(M_PI) / 2.1f);
                 last_turn_direction_ = -1.0f;
                 detection_time_ = now;
                 active_aruco_id_ = -1;   // consume the marker
@@ -407,7 +407,7 @@ void MazeLoopNode::control_loop_callback() {
                 pid_controller_.reset(); 
                 // Určení směru zatáčení podle toho, která stěna chybí
                 float turn_dir = following_left_wall_ ? -1.0f : 1.0f; 
-                target_yaw_ = normalize_angle(target_yaw_ + (turn_dir * M_PI / 2.0f));
+                target_yaw_ = normalize_angle(target_yaw_ + (turn_dir * M_PI / 2.1f));
                 last_turn_direction_ = turn_dir;
                 final_correction = 0.0f; 
                 publish_motor_command(127, 127); 
@@ -431,7 +431,7 @@ void MazeLoopNode::control_loop_callback() {
         }
         break;
     case State::DRIVE_TO_CENTER:
-            if ((now - detection_time_).seconds() > 1.0f) {
+            if ((now - detection_time_).seconds() > 1.2f) {
                 current_state_ = State::TURNING;
                 RCLCPP_INFO(this->get_logger(), "Target yaw: %.3f rad", target_yaw_);
                 return;
@@ -472,7 +472,7 @@ void MazeLoopNode::control_loop_callback() {
         else if (active_aruco_id_ == 1) {
             RCLCPP_INFO(this->get_logger(), "ArUco 1 → TURN LEFT");
             // Turn left: -90° from current heading
-            target_yaw_ = normalize_angle(current_yaw_ + static_cast<float>(M_PI) / 2.0f);
+            target_yaw_ = normalize_angle(current_yaw_ + static_cast<float>(M_PI) / 2.1f);
             last_turn_direction_ = -1.0f;
             detection_time_ = now;
             active_aruco_id_ = -1;   // consume the marker
@@ -482,7 +482,7 @@ void MazeLoopNode::control_loop_callback() {
         else if (active_aruco_id_ == 2) {
             RCLCPP_INFO(this->get_logger(), "ArUco 2 → TURN RIGHT");
             // Turn right: +90° from current heading
-            target_yaw_ = normalize_angle(current_yaw_ - static_cast<float>(M_PI) / 2.0f);
+            target_yaw_ = normalize_angle(current_yaw_ - static_cast<float>(M_PI) / 2.1f);
             last_turn_direction_ = +1.0f;
             detection_time_ = now;
             active_aruco_id_ = -1;   // consume the marker
@@ -493,7 +493,7 @@ void MazeLoopNode::control_loop_callback() {
         // No ArUco, default decision: turn into the open side
          RCLCPP_INFO(this->get_logger(), "ArUco TURN WITHOUT ARUCO");
         last_turn_direction_ = (current_right_dist_ > OPENING_THRESHOLD) ? 1.0f : -1.0f;
-        target_yaw_ = normalize_angle(target_yaw_ - (last_turn_direction_ * M_PI / 2.0f));
+        target_yaw_ = normalize_angle(target_yaw_ - (last_turn_direction_ * M_PI / 2.1f));
         detection_time_ = now;
         current_state_ = State::TURNING;
         return;
